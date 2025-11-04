@@ -86,13 +86,13 @@ const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
             ([theme, prefix]) => `
 ${prefix} [data-chart=${id}] {
 ${colorConfig
-  .map(([key, itemConfig]) => {
-    const color =
-      itemConfig.theme?.[theme as keyof typeof itemConfig.theme] ||
-      itemConfig.color
-    return color ? `  --color-${key}: ${color};` : null
-  })
-  .join('\n')}
+                .map(([key, itemConfig]) => {
+                  const color =
+                    itemConfig.theme?.[theme as keyof typeof itemConfig.theme] ||
+                    itemConfig.color
+                  return color ? `  --color-${key}: ${color};` : null
+                })
+                .join('\n')}
 }
 `,
           )
@@ -118,14 +118,27 @@ function ChartTooltipContent({
   color,
   nameKey,
   labelKey,
-}: React.ComponentProps<typeof RechartsPrimitive.Tooltip> &
-  React.ComponentProps<'div'> & {
-    hideLabel?: boolean
-    hideIndicator?: boolean
-    indicator?: 'line' | 'dot' | 'dashed'
-    nameKey?: string
-    labelKey?: string
-  }) {
+}: {
+  active?: boolean
+  payload?: Array<{
+    payload: any
+    name?: string
+    dataKey?: string
+    value?: any
+    color?: string
+  }>
+  className?: string
+  indicator?: 'line' | 'dot' | 'dashed'
+  hideLabel?: boolean
+  hideIndicator?: boolean
+  label?: any
+  labelFormatter?: (value: any, payload: any) => React.ReactNode
+  labelClassName?: string
+  formatter?: (value: any, name: any, item: any, index: number, payload: any) => React.ReactNode
+  color?: string
+  nameKey?: string
+  labelKey?: string
+}) {
   const { config } = useChart()
 
   const tooltipLabel = React.useMemo(() => {
@@ -173,7 +186,7 @@ function ChartTooltipContent({
   return (
     <div
       className={cn(
-        'border-border/50 bg-background grid min-w-[8rem] items-start gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs shadow-xl',
+        'border-border/50 bg-background grid min-w-32 items-start gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs shadow-xl',
         className,
       )}
     >
@@ -202,7 +215,7 @@ function ChartTooltipContent({
                     !hideIndicator && (
                       <div
                         className={cn(
-                          'shrink-0 rounded-[2px] border-(--color-border) bg-(--color-bg)',
+                          'shrink-0 rounded-xs border-(--color-border) bg-(--color-bg)',
                           {
                             'h-2.5 w-2.5': indicator === 'dot',
                             'w-1': indicator === 'line',
@@ -256,11 +269,17 @@ function ChartLegendContent({
   payload,
   verticalAlign = 'bottom',
   nameKey,
-}: React.ComponentProps<'div'> &
-  Pick<RechartsPrimitive.LegendProps, 'payload' | 'verticalAlign'> & {
-    hideIcon?: boolean
-    nameKey?: string
-  }) {
+}: {
+  className?: string
+  hideIcon?: boolean
+  payload?: Array<{
+    value?: any
+    dataKey?: string
+    color?: string
+  }>
+  verticalAlign?: 'top' | 'bottom'
+  nameKey?: string
+}) {
   const { config } = useChart()
 
   if (!payload?.length) {
@@ -290,7 +309,7 @@ function ChartLegendContent({
               <itemConfig.icon />
             ) : (
               <div
-                className="h-2 w-2 shrink-0 rounded-[2px]"
+                className="h-2 w-2 shrink-0 rounded-xs"
                 style={{
                   backgroundColor: item.color,
                 }}
@@ -316,8 +335,8 @@ function getPayloadConfigFromPayload(
 
   const payloadPayload =
     'payload' in payload &&
-    typeof payload.payload === 'object' &&
-    payload.payload !== null
+      typeof payload.payload === 'object' &&
+      payload.payload !== null
       ? payload.payload
       : undefined
 
