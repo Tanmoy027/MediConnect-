@@ -4,7 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Syringe, Package, Users, Calendar, Settings, ArrowLeft } from "lucide-react"
+import { Syringe, Package, Calendar, Settings, ArrowLeft, Plus } from "lucide-react"
 
 export default async function BloodBankDashboard() {
   const supabase = await createClient()
@@ -17,37 +17,38 @@ export default async function BloodBankDashboard() {
     redirect("/auth/login")
   }
 
-  // Get user role using admin client to bypass RLS issues
+  // Get user role using admin client
   try {
     const supabaseAdmin = createAdminClient()
-    const { data: profile, error } = await supabaseAdmin
-      .from("users")
-      .select("role")
-      .eq("id", user.id)
-      .single()
+    const { data: profile, error } = await supabaseAdmin.from("users").select("role").eq("id", user.id).single()
 
     if (error) {
       console.error("Error fetching user role:", error)
-      // Don't redirect on error, just continue - user might have been properly redirected here by login
     } else if (profile?.role !== "blood_bank_admin") {
       redirect("/dashboard")
     }
   } catch (error) {
     console.error("Error checking user role:", error)
-    // Don't redirect on error, just continue - user might have been properly redirected here by login
   }
 
   // Get blood bank info
   const { data: bloodBanks } = await supabase.from("blood_banks").select("*").eq("admin_id", user.id)
   const bloodBank = bloodBanks && bloodBanks.length > 0 ? bloodBanks[0] : null
 
-  let inventory = []
-  if (bloodBank?.id) {
-    const { data } = await supabase.from("blood_inventory").select("*").eq("blood_bank_id", bloodBank.id)
-    inventory = data || []
+  if (!bloodBank) {
+    redirect("/dashboard/blood-bank/setup")
   }
 
-  const totalUnits = inventory.reduce((sum, item) => sum + (item.units_available || 0), 0)
+  // Get inventory
+  const { data: inventory } = await supabase.from("blood_inventory").select("*").eq("blood_bank_id", bloodBank.id)
+  const totalUnits = inventory?.reduce((sum, item) => sum + (item.units_available || 0), 0) || 0
+
+  const { data: campaigns } = await supabase
+    .from("campaigns")
+    .select("*")
+    .eq("blood_bank_id", bloodBank.id)
+    .eq("status", "active")
+  const activeCampaigns = campaigns?.length || 0
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -95,30 +96,30 @@ export default async function BloodBankDashboard() {
               <Syringe className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{inventory.length}/8</div>
+              <div className="text-2xl font-bold">{inventory?.length || 0}/8</div>
               <p className="text-xs text-muted-foreground">Types in stock</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Donors</CardTitle>
-              <Users className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium">Active Campaigns</CardTitle>
+              <Calendar className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">0</div>
-              <p className="text-xs text-muted-foreground">Registered donors</p>
+              <div className="text-2xl font-bold">{activeCampaigns}</div>
+              <p className="text-xs text-muted-foreground">Running now</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Appointments</CardTitle>
-              <Calendar className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium">Location</CardTitle>
+              <Settings className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">0</div>
-              <p className="text-xs text-muted-foreground">This week</p>
+              <div className="text-sm font-medium">{bloodBank?.city}</div>
+              <p className="text-xs text-muted-foreground">{bloodBank?.state}</p>
             </CardContent>
           </Card>
         </div>
@@ -136,28 +137,39 @@ export default async function BloodBankDashboard() {
                   Manage Inventory
                 </Link>
               </Button>
-              <Button variant="outline" className="w-full justify-start bg-transparent">
-                <Users className="mr-2 h-4 w-4" />
-                View Donors
+              <Button asChild variant="outline" className="w-full justify-start bg-transparent">
+                <Link href="/dashboard/blood-bank/campaigns">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Create Campaign
+                </Link>
               </Button>
-              <Button variant="outline" className="w-full justify-start bg-transparent">
-                <Calendar className="mr-2 h-4 w-4" />
-                Appointments
-              </Button>
-              <Button variant="outline" className="w-full justify-start bg-transparent">
-                <Settings className="mr-2 h-4 w-4" />
-                Settings
+              <Button asChild variant="outline" className="w-full justify-start bg-transparent">
+                <Link href="/dashboard/blood-bank/profile">
+                  <Settings className="mr-2 h-4 w-4" />
+                  Edit Profile
+                </Link>
               </Button>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle>Recent Activity</CardTitle>
-              <CardDescription>Latest updates and transactions</CardDescription>
+              <CardTitle>Blood Bank Info</CardTitle>
+              <CardDescription>Your organization details</CardDescription>
             </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">No recent activity</p>
+            <CardContent className="space-y-2 text-sm">
+              <p>
+                <strong>Name:</strong> {bloodBank?.name}
+              </p>
+              <p>
+                <strong>Phone:</strong> {bloodBank?.phone}
+              </p>
+              <p>
+                <strong>Email:</strong> {bloodBank?.email || "Not set"}
+              </p>
+              <p>
+                <strong>Address:</strong> {bloodBank?.address}
+              </p>
             </CardContent>
           </Card>
         </div>

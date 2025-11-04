@@ -2,13 +2,10 @@ import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Syringe, ArrowLeft, Phone, MapPin } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
+import { Syringe, ArrowLeft } from "lucide-react"
+import BloodBankSearchClient from "@/components/BloodBankSearchClient"
 
-export default async function BloodBankSearch({ searchParams }) {
+export default async function BloodBankSearch() {
   const supabase = await createClient()
 
   const {
@@ -17,20 +14,6 @@ export default async function BloodBankSearch({ searchParams }) {
 
   if (!user) {
     redirect("/auth/login")
-  }
-
-  const params = await searchParams
-  const city = params.city
-
-  let bloodBanks = []
-  if (city) {
-    const { data } = await supabase
-      .from("blood_banks")
-      .select("*")
-      .eq("city", city)
-      .eq("is_verified", true)
-      .eq("is_active", true)
-    bloodBanks = data || []
   }
 
   return (
@@ -51,56 +34,7 @@ export default async function BloodBankSearch({ searchParams }) {
       </header>
 
       <main className="container mx-auto px-4 py-8">
-        <Card className="mb-8">
-          <CardHeader>
-            <CardTitle>Search Blood Banks</CardTitle>
-            <CardDescription>Find blood banks near you</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form className="grid gap-4 md:grid-cols-2">
-              <div>
-                <Label htmlFor="city">City</Label>
-                <Input id="city" name="city" placeholder="Enter city" defaultValue={city || ""} />
-              </div>
-              <div className="flex items-end">
-                <Button type="submit" className="w-full">
-                  Search
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-
-        {bloodBanks.length === 0 ? (
-          <Card>
-            <CardContent className="pt-6">
-              <p className="text-center text-muted-foreground">No blood banks found in this city</p>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {bloodBanks.map((bank) => (
-              <Card key={bank.id}>
-                <CardHeader>
-                  <CardTitle>{bank.name}</CardTitle>
-                  <CardDescription className="flex items-center gap-1">
-                    <MapPin className="h-4 w-4" />
-                    {bank.city}, {bank.state}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Phone className="h-4 w-4 text-muted-foreground" />
-                    <p className="font-medium">{bank.phone}</p>
-                  </div>
-                  <p className="text-sm text-muted-foreground">{bank.address}</p>
-                  <Badge className="mt-2">{bank.is_verified ? "Verified" : "Unverified"}</Badge>
-                  <Button className="w-full mt-4">Contact</Button>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
+        <BloodBankSearchClient />
       </main>
     </div>
   )

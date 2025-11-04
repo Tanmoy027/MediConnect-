@@ -1,6 +1,5 @@
 "use client"
 
-import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -23,20 +22,10 @@ export default function BloodBankSetup() {
   })
   const [error, setError] = useState(null)
   const [isLoading, setIsLoading] = useState(false)
-  const [userId, setUserId] = useState(null)
   const router = useRouter()
 
   useEffect(() => {
-    const getUser = async () => {
-      const supabase = createClient()
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      if (user) {
-        setUserId(user.id)
-      }
-    }
-    getUser()
+    // No need to fetch user here - API will handle auth
   }, [])
 
   const handleChange = (field, value) => {
@@ -45,28 +34,27 @@ export default function BloodBankSetup() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    const supabase = createClient()
     setIsLoading(true)
     setError(null)
 
     try {
-      const { error } = await supabase.from("blood_banks").insert({
-        admin_id: userId,
-        name: formData.name,
-        email: formData.email,
-        phone: formData.phone,
-        address: formData.address,
-        city: formData.city,
-        state: formData.state,
-        pincode: formData.pincode,
-        license_number: formData.licenseNumber,
-        operating_hours: formData.operatingHours,
+      const response = await fetch("/api/blood-bank/admin/setup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(formData),
       })
 
-      if (error) throw error
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to setup blood bank")
+      }
 
       router.push("/dashboard/blood-bank")
     } catch (error) {
+      console.error("[v0] Setup error:", error)
       setError(error.message)
     } finally {
       setIsLoading(false)
