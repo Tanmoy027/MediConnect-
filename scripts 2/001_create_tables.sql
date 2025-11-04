@@ -1,0 +1,487 @@
+-- Enable UUID extension
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Create enum types
+CREATE TYPE user_role AS ENUM ('super_admin', 'blood_bank_admin', 'hospital_admin', 'pet_hospital_admin', 'emergency_admin', 'normal_user');
+CREATE TYPE blood_type AS ENUM ('A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-');
+CREATE TYPE request_status AS ENUM ('pending', 'approved', 'rejected', 'fulfilled');
+CREATE TYPE campaign_status AS ENUM ('upcoming', 'active', 'completed', 'cancelled');
+CREATE TYPE appointment_status AS ENUM ('scheduled', 'approved', 'rejected', 'completed', 'cancelled', 'no_show');
+CREATE TYPE emergency_status AS ENUM ('active', 'dispatched', 'in_progress', 'completed', 'cancelled');
+CREATE TYPE emergency_priority AS ENUM ('low', 'medium', 'high', 'critical');
+CREATE TYPE bed_status AS ENUM ('available', 'occupied', 'maintenance', 'reserved');
+CREATE TYPE vaccine_type AS ENUM ('routine', 'travel', 'emergency', 'seasonal');
+
+-- Users table (extends auth.users)
+CREATE TABLE IF NOT EXISTS public.users (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  email TEXT NOT NULL UNIQUE,
+  full_name TEXT,
+  phone TEXT,
+  role user_role DEFAULT 'normal_user',
+  avatar_url TEXT,
+  address TEXT,
+  city TEXT,
+  state TEXT,
+  pincode TEXT,
+  date_of_birth DATE,
+  gender TEXT CHECK (gender IN ('male', 'female', 'other')),
+  emergency_contact_name TEXT,
+  emergency_contact_phone TEXT,
+  blood_type blood_type,
+  allergies TEXT,
+  medical_conditions TEXT,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Blood Banks table
+CREATE TABLE IF NOT EXISTS public.blood_banks (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  admin_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
+  name TEXT NOT NULL,
+  email TEXT,
+  phone TEXT NOT NULL,
+  address TEXT NOT NULL,
+  city TEXT NOT NULL,
+  state TEXT NOT NULL,
+  pincode TEXT NOT NULL,
+  latitude DECIMAL(10, 8),
+  longitude DECIMAL(11, 8),
+  license_number TEXT,
+  operating_hours TEXT,
+  emergency_contact TEXT,
+  website TEXT,
+  is_verified BOOLEAN DEFAULT false,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Blood Inventory table
+CREATE TABLE IF NOT EXISTS public.blood_inventory (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  blood_bank_id UUID REFERENCES public.blood_banks(id) ON DELETE CASCADE,
+  blood_type blood_type NOT NULL,
+  units_available INTEGER DEFAULT 0,
+  expiry_date DATE,
+  last_updated TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(blood_bank_id, blood_type)
+);
+
+-- Hospitals table
+CREATE TABLE IF NOT EXISTS public.hospitals (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  admin_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
+  name TEXT NOT NULL,
+  email TEXT,
+  phone TEXT NOT NULL,
+  emergency_phone TEXT,
+  address TEXT NOT NULL,
+  city TEXT NOT NULL,
+  state TEXT NOT NULL,
+  pincode TEXT NOT NULL,
+  latitude DECIMAL(10, 8),
+  longitude DECIMAL(11, 8),
+  specialties TEXT[],
+  services TEXT[],
+  emergency_available BOOLEAN DEFAULT true,
+  ambulance_available BOOLEAN DEFAULT false,
+  trauma_center BOOLEAN DEFAULT false,
+  bed_capacity INTEGER,
+  available_beds INTEGER,
+  icu_beds INTEGER,
+  icu_available INTEGER,
+  emergency_beds INTEGER,
+  emergency_available_beds INTEGER,
+  license_number TEXT,
+  accreditation TEXT,
+  website TEXT,
+  operating_hours TEXT,
+  emergency_hours TEXT DEFAULT '24x7',
+  is_verified BOOLEAN DEFAULT false,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Hospital Beds table
+CREATE TABLE IF NOT EXISTS public.hospital_beds (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  hospital_id UUID REFERENCES public.hospitals(id) ON DELETE CASCADE,
+  bed_number TEXT NOT NULL,
+  ward_name TEXT,
+  bed_type TEXT, -- general, icu, emergency, private, etc.
+  status bed_status DEFAULT 'available',
+  patient_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
+  assigned_date TIMESTAMP WITH TIME ZONE,
+  discharge_date TIMESTAMP WITH TIME ZONE,
+  notes TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(hospital_id, bed_number)
+);
+
+-- Pet Hospitals table
+CREATE TABLE IF NOT EXISTS public.pet_hospitals (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  admin_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
+  name TEXT NOT NULL,
+  email TEXT,
+  phone TEXT NOT NULL,
+  emergency_phone TEXT,
+  address TEXT NOT NULL,
+  city TEXT NOT NULL,
+  state TEXT NOT NULL,
+  pincode TEXT NOT NULL,
+  latitude DECIMAL(10, 8),
+  longitude DECIMAL(11, 8),
+  specialties TEXT[],
+  services TEXT[],
+  emergency_available BOOLEAN DEFAULT true,
+  operating_hours TEXT,
+  emergency_hours TEXT,
+  license_number TEXT,
+  website TEXT,
+  is_verified BOOLEAN DEFAULT false,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Emergency Services table
+CREATE TABLE IF NOT EXISTS public.emergency_services (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  admin_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
+  name TEXT NOT NULL,
+  service_type TEXT NOT NULL, -- ambulance, fire, police, disaster_response
+  phone TEXT NOT NULL,
+  emergency_phone TEXT NOT NULL,
+  address TEXT NOT NULL,
+  city TEXT NOT NULL,
+  state TEXT NOT NULL,
+  pincode TEXT NOT NULL,
+  latitude DECIMAL(10, 8),
+  longitude DECIMAL(11, 8),
+  coverage_area TEXT[],
+  available_units INTEGER DEFAULT 0,
+  active_units INTEGER DEFAULT 0,
+  response_time_avg INTEGER, -- in minutes
+  equipment TEXT[],
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Emergency Requests table
+CREATE TABLE IF NOT EXISTS public.emergency_requests (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  requester_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
+  emergency_service_id UUID REFERENCES public.emergency_services(id) ON DELETE SET NULL,
+  request_type TEXT NOT NULL, -- medical, fire, accident, disaster
+  priority emergency_priority DEFAULT 'medium',
+  status emergency_status DEFAULT 'active',
+  location_address TEXT NOT NULL,
+  latitude DECIMAL(10, 8),
+  longitude DECIMAL(11, 8),
+  description TEXT NOT NULL,
+  patient_count INTEGER DEFAULT 1,
+  contact_phone TEXT NOT NULL,
+  contact_name TEXT,
+  assigned_unit_id TEXT,
+  dispatch_time TIMESTAMP WITH TIME ZONE,
+  arrival_time TIMESTAMP WITH TIME ZONE,
+  completion_time TIMESTAMP WITH TIME ZONE,
+  notes TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Blood Donors table
+CREATE TABLE IF NOT EXISTS public.blood_donors (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
+  blood_type blood_type NOT NULL,
+  date_of_birth DATE,
+  weight DECIMAL(5, 2),
+  last_donation_date DATE,
+  next_eligible_date DATE,
+  total_donations INTEGER DEFAULT 0,
+  is_available BOOLEAN DEFAULT true,
+  medical_conditions TEXT,
+  medications TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Blood Requests table
+CREATE TABLE IF NOT EXISTS public.blood_requests (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  requester_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
+  blood_type blood_type NOT NULL,
+  units_needed INTEGER NOT NULL,
+  urgency TEXT,
+  patient_name TEXT NOT NULL,
+  patient_age INTEGER,
+  hospital_name TEXT,
+  doctor_name TEXT,
+  contact_number TEXT NOT NULL,
+  city TEXT NOT NULL,
+  state TEXT NOT NULL,
+  reason TEXT,
+  medical_report_url TEXT,
+  status request_status DEFAULT 'pending',
+  fulfilled_date TIMESTAMP WITH TIME ZONE,
+  notes TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Campaigns table
+CREATE TABLE IF NOT EXISTS public.campaigns (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  organizer_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
+  blood_bank_id UUID REFERENCES public.blood_banks(id) ON DELETE SET NULL,
+  title TEXT NOT NULL,
+  description TEXT,
+  venue TEXT NOT NULL,
+  address TEXT NOT NULL,
+  city TEXT NOT NULL,
+  state TEXT NOT NULL,
+  start_date TIMESTAMP WITH TIME ZONE NOT NULL,
+  end_date TIMESTAMP WITH TIME ZONE NOT NULL,
+  target_donors INTEGER,
+  registered_donors INTEGER DEFAULT 0,
+  actual_donors INTEGER DEFAULT 0,
+  blood_collected INTEGER DEFAULT 0,
+  status campaign_status DEFAULT 'upcoming',
+  contact_number TEXT,
+  contact_email TEXT,
+  requirements TEXT,
+  latitude DECIMAL(10, 8),
+  longitude DECIMAL(11, 8),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Campaign Registrations table
+CREATE TABLE IF NOT EXISTS public.campaign_registrations (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  campaign_id UUID REFERENCES public.campaigns(id) ON DELETE CASCADE,
+  donor_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
+  registered_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  attended BOOLEAN DEFAULT false,
+  donated BOOLEAN DEFAULT false,
+  notes TEXT,
+  UNIQUE(campaign_id, donor_id)
+);
+
+-- Pharmacies table
+CREATE TABLE IF NOT EXISTS public.pharmacies (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  admin_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
+  name TEXT NOT NULL,
+  license_number TEXT,
+  phone TEXT NOT NULL,
+  email TEXT,
+  address TEXT NOT NULL,
+  city TEXT NOT NULL,
+  state TEXT NOT NULL,
+  pincode TEXT NOT NULL,
+  latitude DECIMAL(10, 8),
+  longitude DECIMAL(11, 8),
+  operating_hours TEXT,
+  services TEXT[],
+  is_24x7 BOOLEAN DEFAULT false,
+  home_delivery BOOLEAN DEFAULT false,
+  online_ordering BOOLEAN DEFAULT false,
+  website TEXT,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Medicines table
+CREATE TABLE IF NOT EXISTS public.medicines (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  generic_name TEXT,
+  manufacturer TEXT,
+  category TEXT,
+  form TEXT, -- tablet, capsule, syrup, injection, etc.
+  strength TEXT,
+  description TEXT,
+  side_effects TEXT,
+  contraindications TEXT,
+  storage_instructions TEXT,
+  prescription_required BOOLEAN DEFAULT true,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Pharmacy Inventory table
+CREATE TABLE IF NOT EXISTS public.pharmacy_inventory (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  pharmacy_id UUID REFERENCES public.pharmacies(id) ON DELETE CASCADE,
+  medicine_id UUID REFERENCES public.medicines(id) ON DELETE CASCADE,
+  stock_quantity INTEGER DEFAULT 0,
+  price DECIMAL(10, 2),
+  expiry_date DATE,
+  batch_number TEXT,
+  last_updated TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(pharmacy_id, medicine_id, batch_number)
+);
+
+-- Vaccines table
+CREATE TABLE IF NOT EXISTS public.vaccines (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  manufacturer TEXT,
+  description TEXT,
+  vaccine_type vaccine_type DEFAULT 'routine',
+  age_group TEXT,
+  doses_required INTEGER DEFAULT 1,
+  interval_between_doses TEXT, -- e.g., "4 weeks", "6 months"
+  side_effects TEXT,
+  contraindications TEXT,
+  storage_temperature TEXT,
+  efficacy_rate DECIMAL(5, 2), -- percentage
+  duration_of_protection TEXT,
+  who_recommendation TEXT,
+  country_approval_status TEXT,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Vaccine Availability table
+CREATE TABLE IF NOT EXISTS public.vaccine_availability (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  vaccine_id UUID REFERENCES public.vaccines(id) ON DELETE CASCADE,
+  hospital_id UUID REFERENCES public.hospitals(id) ON DELETE CASCADE,
+  available_doses INTEGER DEFAULT 0,
+  reserved_doses INTEGER DEFAULT 0,
+  price DECIMAL(10, 2),
+  batch_number TEXT,
+  expiry_date DATE,
+  storage_temperature_current DECIMAL(4, 1),
+  last_updated TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(vaccine_id, hospital_id, batch_number)
+);
+
+-- Vaccination Records table
+CREATE TABLE IF NOT EXISTS public.vaccination_records (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  patient_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
+  vaccine_id UUID REFERENCES public.vaccines(id) ON DELETE CASCADE,
+  hospital_id UUID REFERENCES public.hospitals(id) ON DELETE CASCADE,
+  dose_number INTEGER NOT NULL,
+  vaccination_date DATE NOT NULL,
+  batch_number TEXT,
+  next_dose_due_date DATE,
+  administered_by TEXT,
+  site_of_injection TEXT,
+  adverse_reactions TEXT,
+  certificate_number TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Appointments table
+CREATE TABLE IF NOT EXISTS public.appointments (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
+  hospital_id UUID REFERENCES public.hospitals(id) ON DELETE CASCADE,
+  appointment_date TIMESTAMP WITH TIME ZONE NOT NULL,
+  appointment_type TEXT, -- consultation, vaccination, checkup, emergency
+  department TEXT,
+  doctor_name TEXT,
+  reason TEXT,
+  status appointment_status DEFAULT 'scheduled',
+  priority TEXT DEFAULT 'normal',
+  notes TEXT,
+  admin_notes TEXT,
+  estimated_duration INTEGER, -- in minutes
+  actual_start_time TIMESTAMP WITH TIME ZONE,
+  actual_end_time TIMESTAMP WITH TIME ZONE,
+  follow_up_required BOOLEAN DEFAULT false,
+  follow_up_date DATE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Medical Records table
+CREATE TABLE IF NOT EXISTS public.medical_records (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  patient_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
+  hospital_id UUID REFERENCES public.hospitals(id) ON DELETE CASCADE,
+  appointment_id UUID REFERENCES public.appointments(id) ON DELETE SET NULL,
+  doctor_name TEXT NOT NULL,
+  visit_date DATE NOT NULL,
+  diagnosis TEXT,
+  symptoms TEXT,
+  treatment_plan TEXT,
+  medications_prescribed TEXT,
+  lab_reports_url TEXT,
+  follow_up_instructions TEXT,
+  is_confidential BOOLEAN DEFAULT false,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Notifications table
+CREATE TABLE IF NOT EXISTS public.notifications (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  message TEXT NOT NULL,
+  type TEXT, -- appointment, emergency, blood_request, campaign, system
+  priority TEXT DEFAULT 'normal', -- low, normal, high, urgent
+  related_id UUID, -- ID of related record (appointment, request, etc.)
+  action_url TEXT,
+  is_read BOOLEAN DEFAULT false,
+  sent_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  read_at TIMESTAMP WITH TIME ZONE,
+  expires_at TIMESTAMP WITH TIME ZONE
+);
+
+-- Reviews and Ratings table
+CREATE TABLE IF NOT EXISTS public.reviews (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  reviewer_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
+  reviewee_type TEXT NOT NULL, -- hospital, blood_bank, pharmacy, emergency_service
+  reviewee_id UUID NOT NULL,
+  rating INTEGER CHECK (rating >= 1 AND rating <= 5),
+  review_text TEXT,
+  is_verified BOOLEAN DEFAULT false,
+  is_public BOOLEAN DEFAULT true,
+  helpful_count INTEGER DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- System Logs table
+CREATE TABLE IF NOT EXISTS public.system_logs (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
+  action TEXT NOT NULL,
+  table_name TEXT,
+  record_id UUID,
+  old_values JSONB,
+  new_values JSONB,
+  ip_address INET,
+  user_agent TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create indexes for better performance
+CREATE INDEX idx_users_role ON public.users(role);
+CREATE INDEX idx_users_city ON public.users(city);
+CREATE INDEX idx_blood_banks_city ON public.blood_banks(city);
+CREATE INDEX idx_hospitals_city ON public.hospitals(city);
+CREATE INDEX idx_pet_hospitals_city ON public.pet_hospitals(city);
+CREATE INDEX idx_blood_donors_blood_type ON public.blood_donors(blood_type);
+CREATE INDEX idx_blood_donors_available ON public.blood_donors(is_available);
+CREATE INDEX idx_blood_requests_status ON public.blood_requests(status);
+CREATE INDEX idx_campaigns_status ON public.campaigns(status);
+CREATE INDEX idx_campaigns_dates ON public.campaigns(start_date, end_date);
