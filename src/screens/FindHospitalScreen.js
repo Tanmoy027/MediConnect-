@@ -41,19 +41,17 @@ const FindHospitalScreen = ({ navigation }) => {
                 search: searchQuery,
                 ...(selectedFilter !== 'all' && selectedFilter !== 'emergency' && { type: selectedFilter }),
             }; const result = await hospitalService.getAllHospitals(params);
-            console.log('Hospital service result:', result);            if (result.success) {
+            console.log('Hospital service result:', result); if (result.success) {
                 const newHospitals = result.data?.hospitals || [];
 
                 // Filter for emergency if selected (now using the correct field)
                 const filteredHospitals = selectedFilter === 'emergency'
-                    ? newHospitals.filter(h => h.is_emergency)
+                    ? newHospitals.filter(h => h.is_emergency === true)
                     : selectedFilter === 'verified'
-                    ? newHospitals.filter(h => h.is_verified)
-                    : selectedFilter === 'public'
-                    ? newHospitals.filter(h => h.type === 'public' || !h.is_verified)
-                    : selectedFilter === 'private'
-                    ? newHospitals.filter(h => h.type === 'private' || h.is_verified)
-                    : newHospitals; // 'all' case
+                        ? newHospitals.filter(h => h.is_verified === true)
+                        : selectedFilter === 'general'
+                            ? newHospitals.filter(h => h.type === 'general' || !h.is_verified)
+                            : newHospitals; // 'all' case
 
                 if (isRefresh) {
                     setHospitals(filteredHospitals);
@@ -129,16 +127,15 @@ const FindHospitalScreen = ({ navigation }) => {
                 {label}
             </Text>
         </TouchableOpacity>
-    );
-
-    const renderHospitalCard = (hospital) => (
+    ); const renderHospitalCard = (hospital) => (
         <TouchableOpacity
             key={hospital.id}
             style={styles.hospitalCard}
             onPress={() => handleHospitalPress(hospital)}
         >
-            <View style={styles.hospitalHeader}>                <View style={styles.hospitalInfo}>
-                    <Text style={styles.hospitalName}>{hospital.name}</Text>
+            <View style={styles.hospitalHeader}>
+                <View style={styles.hospitalInfo}>
+                    <Text style={styles.hospitalName}>{hospital.name || 'Unknown Hospital'}</Text>
                     <Text style={styles.hospitalType}>
                         {hospital.is_verified ? 'Verified Hospital' : 'General Hospital'}
                     </Text>
@@ -150,9 +147,10 @@ const FindHospitalScreen = ({ navigation }) => {
                 )}
             </View>
 
-            <Text style={styles.hospitalAddress}>{hospital.address}</Text>
+            <Text style={styles.hospitalAddress}>{hospital.address || 'Address not available'}</Text>
 
-            <View style={styles.hospitalDetails}>                <View style={styles.detailItem}>
+            <View style={styles.hospitalDetails}>
+                <View style={styles.detailItem}>
                     <Text style={styles.detailLabel}>Rating:</Text>
                     <Text style={styles.detailValue}>⭐ {hospital.rating || '4.0'}</Text>
                 </View>
@@ -165,21 +163,26 @@ const FindHospitalScreen = ({ navigation }) => {
                     <Text style={styles.detailValue}>{hospital.beds_available || 0} beds</Text>
                 </View>
             </View>            <View style={styles.specialtiesContainer}>
-                {(hospital.specialties || ['General Medicine']).slice(0, 3).map((specialty, index) => (
-                    <View key={index} style={styles.specialtyTag}>
-                        <Text style={styles.specialtyText}>{specialty.trim()}</Text>
-                    </View>
-                ))}
-                {(hospital.specialties || []).length > 3 && (
+                {(Array.isArray(hospital.specialties) ? hospital.specialties : ['General Medicine'])
+                    .filter(specialty => specialty && typeof specialty === 'string' && specialty.trim() !== '')
+                    .slice(0, 3)
+                    .map((specialty, index) => (
+                        <View key={`specialty-${index}`} style={styles.specialtyTag}>
+                            <Text style={styles.specialtyText}>
+                                {specialty.trim()}
+                            </Text>
+                        </View>
+                    ))}
+                {(Array.isArray(hospital.specialties) ? hospital.specialties : []).length > 3 && (
                     <Text style={styles.moreSpecialties}>
-                        +{(hospital.specialties || []).length - 3} more
+                        +{(Array.isArray(hospital.specialties) ? hospital.specialties : []).length - 3} more
                     </Text>
                 )}
-            </View>
-
-            <View style={styles.contactInfo}>
-                <Text style={styles.contactText}>📞 {hospital.phone}</Text>
-                {hospital.email && (
+            </View>            <View style={styles.contactInfo}>
+                <Text style={styles.contactText}>
+                    📞 {hospital.phone && hospital.phone.trim() !== '' ? hospital.phone : 'Phone not available'}
+                </Text>
+                {hospital.email && hospital.email.trim() !== '' && (
                     <Text style={styles.contactText}>✉️ {hospital.email}</Text>
                 )}
             </View>
@@ -470,7 +473,7 @@ const styles = StyleSheet.create({
         color: '#999999',
         alignSelf: 'center',
         marginLeft: 4,
-    },    contactInfo: {
+    }, contactInfo: {
         borderTopWidth: 1,
         borderTopColor: '#F0F0F0',
         paddingTop: 8,

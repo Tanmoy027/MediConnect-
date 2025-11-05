@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { useAuth } from '../context';
-import { SplashScreen, OnboardingScreen, FindHospitalScreen, HospitalDetailsScreen, ProfileScreen } from '../screens';
+import { SplashScreen, OnboardingScreen, FindHospitalScreen, FindVaccineScreen, HospitalDetailsScreen, ProfileScreen } from '../screens';
 import ProfilePage from '../screens/ProfilePage';
 import { LoginScreen, RegisterScreen } from '../auth';
 import { HomeScreen } from '../main';
@@ -30,6 +30,8 @@ const AppNavigator = () => {
         navigate: (screenName, params) => {
             if (screenName === 'FindHospital') {
                 setCurrentMainScreen('findHospital');
+            } else if (screenName === 'FindVaccine') {
+                setCurrentMainScreen('findVaccine');
             } else if (screenName === 'HospitalDetails') {
                 setSelectedHospital(params?.hospital);
                 setCurrentMainScreen('hospitalDetails');
@@ -43,6 +45,8 @@ const AppNavigator = () => {
             if (currentMainScreen === 'hospitalDetails') {
                 setCurrentMainScreen('findHospital');
             } else if (currentMainScreen === 'findHospital') {
+                setCurrentMainScreen('home');
+            } else if (currentMainScreen === 'findVaccine') {
                 setCurrentMainScreen('home');
             } else if (currentMainScreen === 'profile') {
                 setCurrentMainScreen('home');
@@ -66,6 +70,8 @@ const AppNavigator = () => {
     if (isAuthenticated) {
         if (currentMainScreen === 'findHospital') {
             return <FindHospitalScreen navigation={navigation} />;
+        } else if (currentMainScreen === 'findVaccine') {
+            return <FindVaccineScreen navigation={navigation} />;
         } else if (currentMainScreen === 'hospitalDetails') {
             return <HospitalDetailsScreen navigation={navigation} route={{ params: { hospital: selectedHospital } }} />;
         } else if (currentMainScreen === 'profile') {

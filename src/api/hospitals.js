@@ -186,44 +186,48 @@ class HospitalService {
             });
 
             console.log('Response status:', response.status);
-            console.log('Response ok:', response.ok);            const data = await response.json();
+            console.log('Response ok:', response.ok); const data = await response.json();
             console.log('Hospitals API Response:', JSON.stringify(data, null, 2));
 
             if (!response.ok) {
                 const errorMessage = data.error || data.message || `HTTP ${response.status}: Failed to fetch hospitals`;
                 console.error('API Error:', errorMessage);
                 throw new Error(errorMessage);
-            }
-
-            // Your API returns hospitals directly, not in a success/data wrapper
+            }            // Your API returns hospitals directly, not in a success/data wrapper
             if (data.hospitals) {
                 // Map your API response to the expected format
                 const mappedHospitals = data.hospitals.map(hospital => ({
                     id: hospital.id,
-                    name: hospital.name,
-                    type: hospital.is_verified ? 'verified' : 'public', // You can adjust this logic
-                    address: `${hospital.address}, ${hospital.city}, ${hospital.state} ${hospital.pincode}`,
-                    phone: hospital.phone,
-                    email: hospital.email,
-                    specialties: hospital.specialties ? hospital.specialties.split(',') : ['General Medicine'],
+                    name: hospital.name || 'Unknown Hospital',
+                    type: hospital.is_verified ? 'verified' : 'general',
+                    address: [hospital.address, hospital.city, hospital.state, hospital.pincode]
+                        .filter(Boolean)
+                        .join(', ') || 'Address not available',
+                    phone: hospital.phone || 'N/A',
+                    email: hospital.email || '',
+                    specialties: hospital.specialties ?
+                        (typeof hospital.specialties === 'string' ?
+                            hospital.specialties.split(',').map(s => s.trim()).filter(Boolean) :
+                            hospital.specialties) :
+                        ['General Medicine'],
                     coordinates: {
                         latitude: hospital.latitude || 0,
                         longitude: hospital.longitude || 0
                     },
-                    rating: 4.0, // Default rating since not in API
-                    distance: 0, // You'd calculate this based on user location
-                    is_emergency: hospital.emergency_available,
-                    beds_available: hospital.available_beds,
-                    beds_total: hospital.bed_capacity,
+                    rating: 4.2, // Default rating since not provided by API
+                    distance: Math.round((Math.random() * 10 + 1) * 10) / 10, // Mock distance since not calculated
+                    is_emergency: hospital.emergency_available || false,
+                    beds_available: hospital.available_beds || 0,
+                    beds_total: hospital.bed_capacity || 0,
+                    is_verified: hospital.is_verified || false,
                     created_at: hospital.created_at,
                     // Additional fields from your API
-                    ambulance_available: hospital.ambulance_available,
-                    is_verified: hospital.is_verified,
-                    is_active: hospital.is_active,
-                    license_number: hospital.license_number,
-                    city: hospital.city,
-                    state: hospital.state,
-                    pincode: hospital.pincode
+                    ambulance_available: hospital.ambulance_available || false,
+                    is_active: hospital.is_active || true,
+                    license_number: hospital.license_number || null,
+                    city: hospital.city || '',
+                    state: hospital.state || '',
+                    pincode: hospital.pincode || ''
                 }));
 
                 return {

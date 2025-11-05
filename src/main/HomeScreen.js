@@ -61,12 +61,11 @@ const HomeScreen = ({ navigation }) => {
             title: 'Find Blood Bank',
             icon: '🏛️',
             onPress: () => console.log('Find Blood Bank pressed'),
-        },
-        {
+        },        {
             id: 3,
             title: 'Find Vaccine',
             icon: '💉',
-            onPress: () => console.log('Find Vaccine pressed'),
+            onPress: () => navigation.navigate('FindVaccine'),
         },
         {
             id: 4,
