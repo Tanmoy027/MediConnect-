@@ -1,0 +1,139 @@
+@import "tailwindcss";
+
+:root {
+  /* Medical Theme - Light Mode */
+  --background: #fefefe;
+  --foreground: #1a1a1a;
+  
+  /* Medical color palette */
+  --medical-red: #dc2626; /* Main blood red */
+  --medical-red-dark: #b91c1c; /* Darker blood red */
+  --medical-red-light: #fee2e2; /* Light blood tint */
+  --medical-blue: #1e40af; /* Medical blue */
+  --medical-blue-light: #dbeafe;
+  --medical-green: #16a34a; /* Health green */
+  --medical-green-light: #dcfce7;
+  --medical-gray: #64748b;
+  --medical-gray-light: #f8fafc;
+  --medical-gray-dark: #334155;
+  
+  /* Component colors */
+  --primary: var(--medical-red);
+  --primary-foreground: #ffffff;
+  --secondary: var(--medical-gray-light);
+  --secondary-foreground: var(--medical-gray-dark);
+  --accent: var(--medical-red-light);
+  --accent-foreground: var(--medical-red-dark);
+  --muted: var(--medical-gray-light);
+  --muted-foreground: var(--medical-gray);
+  --card: #ffffff;
+  --card-foreground: var(--foreground);
+  --border: #e2e8f0;
+  --input: #ffffff;
+  --ring: var(--medical-red);
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0f1419;
+    --foreground: #f1f5f9;
+    
+    /* Dark mode medical colors */
+    --medical-red: #ef4444;
+    --medical-red-dark: #dc2626;
+    --medical-red-light: #450a0a;
+    --medical-blue: #3b82f6;
+    --medical-blue-light: #1e3a8a;
+    --medical-green: #22c55e;
+    --medical-green-light: #14532d;
+    --medical-gray: #94a3b8;
+    --medical-gray-light: #1e293b;
+    --medical-gray-dark: #cbd5e1;
+    
+    --primary: var(--medical-red);
+    --secondary: var(--medical-gray-light);
+    --secondary-foreground: var(--medical-gray-dark);
+    --accent: var(--medical-red-light);
+    --accent-foreground: var(--medical-red);
+    --muted: var(--medical-gray-light);
+    --muted-foreground: var(--medical-gray);
+    --card: #1e293b;
+    --card-foreground: var(--foreground);
+    --border: #334155;
+    --input: var(--medical-gray-light);
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  line-height: 1.6;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+/* Medical theme enhancements */
+.medical-gradient {
+  background: linear-gradient(135deg, var(--medical-red) 0%, var(--medical-red-dark) 100%);
+}
+
+.medical-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  transition: all 0.2s ease-in-out;
+}
+
+.medical-card:hover {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  transform: translateY(-2px);
+}
+
+.medical-text-primary {
+  color: var(--medical-red);
+}
+
+.medical-text-secondary {
+  color: var(--medical-gray-dark);
+}
+
+.medical-bg-light {
+  background-color: var(--medical-red-light);
+}
+
+/* Improved text contrast */
+.text-readable {
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+.text-description {
+  color: var(--muted-foreground);
+  font-weight: 400;
+}
