@@ -160,7 +160,7 @@ const FindHospitalScreen = ({ navigation }) => {
                 </View>
                 <View style={styles.detailItem}>
                     <Text style={styles.detailLabel}>Available:</Text>
-                    <Text style={styles.detailValue}>{hospital.beds_available || 0} beds</Text>
+                    <Text style={styles.detailValue}>{`${hospital.beds_available || 0} beds`}</Text>
                 </View>
             </View>            <View style={styles.specialtiesContainer}>
                 {(Array.isArray(hospital.specialties) ? hospital.specialties : ['General Medicine'])

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     View,
     Text,
@@ -8,13 +8,36 @@ import {
     TouchableOpacity,
     Image,
     Alert,
+    ActivityIndicator,
 } from 'react-native';
 import { useAuth } from '../context';
 import BottomNavigation from '../components/BottomNavigation';
+import { campaignService } from '../api';
 
 const HomeScreen = ({ navigation }) => {
     const [activeTab, setActiveTab] = useState('home');
-    const { user, logout } = useAuth(); const handleTabPress = (tabId) => {
+    const [campaigns, setCampaigns] = useState([]);
+    const [loadingCampaigns, setLoadingCampaigns] = useState(false);
+    const { user, logout } = useAuth();
+
+    useEffect(() => {
+        loadLatestCampaigns();
+    }, []);
+
+    const loadLatestCampaigns = async () => {
+        try {
+            setLoadingCampaigns(true);
+            const response = await campaignService.getAllCampaigns({ status: 'upcoming' });
+            if (response.success && Array.isArray(response.data)) {
+                // Get latest 3 campaigns
+                setCampaigns(response.data.slice(0, 3));
+            }
+        } catch (error) {
+            console.error('Error loading campaigns:', error);
+        } finally {
+            setLoadingCampaigns(false);
+        }
+    }; const handleTabPress = (tabId) => {
         setActiveTab(tabId);
         // Handle navigation to different screens based on tabId
         if (tabId === 'profile') {
@@ -61,7 +84,7 @@ const HomeScreen = ({ navigation }) => {
             title: 'Find Blood Bank',
             icon: '🏛️',
             onPress: () => console.log('Find Blood Bank pressed'),
-        },        {
+        }, {
             id: 3,
             title: 'Find Vaccine',
             icon: '💉',
@@ -78,23 +101,6 @@ const HomeScreen = ({ navigation }) => {
             title: 'Find Animal Hospital',
             icon: '🐾',
             onPress: () => console.log('Find Animal Hospital pressed'),
-        },
-    ];
-
-    const bloodDonationCamps = [
-        {
-            id: 1,
-            title: 'Blood Donation Camp',
-            location: 'Community Center',
-            address: '123 Main Street, Anytown',
-            image: require('../../assets/splash2.png'), // Using existing image as placeholder
-        },
-        {
-            id: 2,
-            title: 'Blood Donation Camp',
-            location: 'City Hall',
-            address: '456 Oak Avenue, Anytown',
-            image: require('../../assets/splash2.png'), // Using existing image as placeholder
         },
     ];
 
@@ -140,24 +146,61 @@ const HomeScreen = ({ navigation }) => {
                             </TouchableOpacity>
                         ))}
                     </View>
-                </View>
-
-                {/* Upcoming Blood Donation Camps */}
+                </View>                {/* Upcoming Blood Donation Camps */}
                 <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Upcoming Blood Donation Camps</Text>
+                    <View style={styles.sectionHeader}>
+                        <Text style={styles.sectionTitle}>Blood Donation Campaigns</Text>
+                        <TouchableOpacity
+                            style={styles.viewAllButton}
+                            onPress={() => navigation.navigate('CampaignDashboard')}
+                        >
+                            <Text style={styles.viewAllText}>View All</Text>
+                        </TouchableOpacity>
+                    </View>
 
-                    {bloodDonationCamps.map((camp) => (
-                        <TouchableOpacity key={camp.id} style={styles.campCard}>
-                            <View style={styles.campInfo}>
-                                <Text style={styles.campTitle}>{camp.title}</Text>
-                                <Text style={styles.campLocation}>{camp.location}</Text>
-                                <Text style={styles.campAddress}>{camp.address}</Text>
-                            </View>
-                            <View style={styles.campImageContainer}>
-                                <Image source={camp.image} style={styles.campImage} resizeMode="cover" />
+                    {loadingCampaigns ? (
+                        <View style={styles.loadingContainer}>
+                            <ActivityIndicator size="small" color="#007AFF" />
+                        </View>
+                    ) : campaigns.length > 0 ? (
+                        campaigns.map((campaign) => (
+                            <TouchableOpacity
+                                key={campaign.id}
+                                style={styles.campaignCard}
+                                onPress={() => navigation.navigate('CampaignDetails', { campaign })}
+                            >
+                                <View style={styles.campaignCardHeader}>
+                                    <Text style={styles.campaignCardTitle}>{campaign.title}</Text>
+                                    <View style={[styles.campaignStatusBadge, { backgroundColor: '#007AFF' }]}>
+                                        <Text style={styles.campaignStatusText}>UPCOMING</Text>
+                                    </View>
+                                </View>
+                                <Text style={styles.campaignCardLocation}>
+                                    📍 {campaign.location?.city || campaign.city}, {campaign.location?.state || campaign.state}
+                                </Text>
+                                <Text style={styles.campaignCardDate}>
+                                    📅 {campaign.date ? new Date(campaign.date).toLocaleDateString() : 'Date TBD'}
+                                </Text>
+                                <Text style={styles.campaignCardOrganizer}>
+                                    🏛️ {campaign.organizer || 'Unknown Organizer'}
+                                </Text>
+                            </TouchableOpacity>
+                        ))
+                    ) : (
+                        <TouchableOpacity
+                            style={styles.campaignButton}
+                            onPress={() => navigation.navigate('CampaignDashboard')}
+                        >
+                            <View style={styles.campaignButtonContent}>
+                                <Text style={styles.campaignButtonIcon}>🩸</Text>
+                                <View style={styles.campaignButtonText}>
+                                    <Text style={styles.campaignButtonTitle}>View All Campaigns</Text>
+                                    <Text style={styles.campaignButtonSubtitle}>Find blood donation drives near you</Text>
+                                </View>
+                                <Text style={styles.campaignButtonArrow}>→</Text>
                             </View>
                         </TouchableOpacity>
-                    ))}
+                    )}
                 </View>
             </ScrollView>
 
@@ -217,12 +260,27 @@ const styles = StyleSheet.create({
     section: {
         marginBottom: 30,
     },
+    sectionHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 20,
+    },
     sectionTitle: {
         fontSize: 22,
         fontWeight: 'bold',
         color: '#333333',
-        marginBottom: 20,
         fontFamily: 'System',
+    },
+    viewAllButton: {
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        backgroundColor: '#007AFF',
+        borderRadius: 6,
+    }, viewAllText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#FFFFFF',
     },
     findGrid: {
         flexDirection: 'row',
@@ -297,10 +355,107 @@ const styles = StyleSheet.create({
         height: 60,
         borderRadius: 8,
         overflow: 'hidden',
-    },
-    campImage: {
+    }, campImage: {
         width: '100%',
         height: '100%',
+    },
+    campaignButton: {
+        backgroundColor: '#FFFFFF',
+        borderRadius: 12,
+        padding: 20,
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: {
+            width: 0,
+            height: 1,
+        },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+        borderWidth: 1,
+        borderColor: '#F0F0F0',
+    },
+    campaignButtonContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    campaignButtonIcon: {
+        fontSize: 32,
+        marginRight: 15,
+    },
+    campaignButtonText: {
+        flex: 1,
+    },
+    campaignButtonTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#333333',
+        marginBottom: 4,
+    },
+    campaignButtonSubtitle: {
+        fontSize: 14,
+        color: '#666666',
+    },
+    campaignButtonArrow: {
+        fontSize: 24,
+        color: '#007AFF',
+        fontWeight: 'bold',
+    },
+    loadingContainer: {
+        padding: 20,
+        alignItems: 'center',
+    },
+    campaignCard: {
+        backgroundColor: '#FFFFFF',
+        borderRadius: 12,
+        padding: 16,
+        marginBottom: 12,
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: {
+            width: 0,
+            height: 1,
+        },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+        borderWidth: 1,
+        borderColor: '#F0F0F0',
+    },
+    campaignCardHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
+        marginBottom: 8,
+    },
+    campaignCardTitle: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: '#333333',
+        flex: 1,
+        marginRight: 8,
+    },
+    campaignStatusBadge: {
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 12,
+    },
+    campaignStatusText: {
+        fontSize: 10,
+        fontWeight: 'bold',
+        color: '#FFFFFF',
+    },
+    campaignCardLocation: {
+        fontSize: 14,
+        color: '#666666',
+        marginBottom: 4,
+    },
+    campaignCardDate: {
+        fontSize: 14,
+        color: '#666666',
+        marginBottom: 4,
+    },
+    campaignCardOrganizer: {
+        fontSize: 14,
+        color: '#666666',
     },
 });
 

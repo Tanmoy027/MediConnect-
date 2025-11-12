@@ -34,7 +34,7 @@ const FindVaccineScreen = ({ navigation }) => {
                 setPage(1);
             } else {
                 setLoading(true);
-            }            const params = {
+            } const params = {
                 page: isRefresh ? 1 : page,
                 limit: 10,
                 ...(searchQuery && searchQuery.trim() !== '' && { search: searchQuery.trim() }),
@@ -77,10 +77,10 @@ const FindVaccineScreen = ({ navigation }) => {
             console.error('Load vaccines error:', error);
 
             const errorMessage = error.message || 'Failed to load vaccines';
-            
+
             if (errorMessage.includes('Network') || errorMessage.includes('fetch')) {
                 Alert.alert(
-                    'Connection Error', 
+                    'Connection Error',
                     'Please check your internet connection and try again.',
                     [
                         { text: 'Retry', onPress: () => loadVaccines(isRefresh) },
@@ -99,7 +99,7 @@ const FindVaccineScreen = ({ navigation }) => {
     const handleSearch = () => {
         setPage(1);
         loadVaccines();
-    };    const handleFilterChange = (filter) => {
+    }; const handleFilterChange = (filter) => {
         console.log('Filter changed to:', filter);
         setSelectedFilter(filter);
         setPage(1);
@@ -214,11 +214,11 @@ const FindVaccineScreen = ({ navigation }) => {
             <View style={styles.vaccineDetails}>
                 <View style={styles.detailItem}>
                     <Text style={styles.detailLabel}>Doses:</Text>
-                    <Text style={styles.detailValue}>{vaccine.doses_required || 1}</Text>
+                    <Text style={styles.detailValue}>{`${vaccine.doses_required || 1}`}</Text>
                 </View>
                 <View style={styles.detailItem}>
                     <Text style={styles.detailLabel}>Efficacy:</Text>
-                    <Text style={styles.detailValue}>{vaccine.efficacy_rate || 'N/A'}%</Text>
+                    <Text style={styles.detailValue}>{`${vaccine.efficacy_rate || 'N/A'}%`}</Text>
                 </View>
                 <View style={styles.detailItem}>
                     <Text style={styles.detailLabel}>Cost:</Text>
@@ -241,7 +241,7 @@ const FindVaccineScreen = ({ navigation }) => {
 
             <View style={styles.availabilityContainer}>
                 <View style={[
-                    styles.availabilityBadge, 
+                    styles.availabilityBadge,
                     { backgroundColor: getAvailabilityColor(vaccine.availability) }
                 ]}>
                     <Text style={styles.availabilityText}>
@@ -343,16 +343,16 @@ const FindVaccineScreen = ({ navigation }) => {
                     <View style={styles.loadingContainer}>
                         <ActivityIndicator size="large" color="#E53E3E" />
                         <Text style={styles.loadingText}>Loading vaccines...</Text>
-                    </View>                ) : vaccines.length === 0 ? (
-                    <View style={styles.emptyContainer}>
-                        <Text style={styles.emptyText}>💉 No vaccines found</Text>
-                        <Text style={styles.emptySubtext}>
-                            {selectedFilter !== 'all' || selectedAgeGroup || searchQuery ? 
-                                'Try adjusting your search terms or filters to find vaccines' :
-                                'No vaccines available in the database. Please contact your administrator.'}
-                        </Text>
-                    </View>
-                ) : (
+                    </View>) : vaccines.length === 0 ? (
+                        <View style={styles.emptyContainer}>
+                            <Text style={styles.emptyText}>💉 No vaccines found</Text>
+                            <Text style={styles.emptySubtext}>
+                                {selectedFilter !== 'all' || selectedAgeGroup || searchQuery ?
+                                    'Try adjusting your search terms or filters to find vaccines' :
+                                    'No vaccines available in the database. Please contact your administrator.'}
+                            </Text>
+                        </View>
+                    ) : (
                     <>
                         {vaccines.map(renderVaccineCard)}
 

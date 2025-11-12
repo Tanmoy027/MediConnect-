@@ -133,17 +133,18 @@ class VaccineService {
 
     // Get all vaccines with filtering and pagination
     async getAllVaccines(params = {}) {
+        // Extract params outside try block so they're accessible in catch
+        const {
+            page = 1,
+            limit = 10,
+            search = '',
+            category = '',
+            age_group = '',
+            required = ''
+        } = params;
+
         try {
             await this.initializeAuth(); // Ensure auth token is loaded
-            
-            const {
-                page = 1,
-                limit = 10,
-                search = '',
-                category = '',
-                age_group = '',
-                required = ''
-            } = params;
 
             if (DEMO_MODE) {
                 // Simulate API delay
@@ -195,19 +196,21 @@ class VaccineService {
                     },
                     message: 'Vaccines retrieved successfully'
                 };
-            }            // Real API call
-            const queryParams = new URLSearchParams({
-                page: page.toString(),
-                limit: limit.toString(),
-                ...(search && search.trim() !== '' && { search }),
-                ...(category && category.trim() !== '' && { category }),
-                ...(age_group && age_group.trim() !== '' && { age_group }),
-                ...(required !== '' && required !== null && required !== undefined && { required })
-            });
+            }            // Real API call - Your backend uses 'name' instead of 'search'
+            const queryParams = new URLSearchParams();
+
+            // Map app parameters to backend parameters
+            if (search && search.trim() !== '') {
+                queryParams.append('name', search.trim());
+            }
+            // If no search term, add empty name to satisfy backend requirement
+            if (!search || search.trim() === '') {
+                queryParams.append('name', '');
+            }
 
             console.log('Fetching vaccines with params:', queryParams.toString());
             console.log('Using auth token:', this.authToken ? 'Token present' : 'No token');
-            
+
             const response = await fetch(`${API_BASE_URL}/vaccines?${queryParams}`, {
                 method: 'GET',
                 headers: this.getAuthHeaders(),
@@ -215,24 +218,35 @@ class VaccineService {
 
             console.log('Response status:', response.status);
             console.log('Response ok:', response.ok);
-              const data = await response.json();
+
+            // Check if response is JSON
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                console.warn('⚠️ Vaccines API not available (404 or HTML response)');
+                console.warn('⚠️ Using demo data. Create /api/vaccines endpoint on backend.');
+                throw new Error('ENDPOINT_NOT_FOUND');
+            }
+
+            const data = await response.json();
             console.log('Vaccines API Response:', JSON.stringify(data, null, 2));
 
             if (!response.ok) {
                 const errorMessage = data.error || data.message || `HTTP ${response.status}: Failed to fetch vaccines`;
                 console.error('API Error:', errorMessage);
                 throw new Error(errorMessage);
-            }            // Handle API response structure - adapt to your actual API
+            }            // Handle API response structure
             if (data.success && data.data) {
-                const vaccines = data.data.vaccines || [];
-                
+                // Your backend returns data directly as array or object
+                const vaccines = Array.isArray(data.data) ? data.data : (data.data.vaccines || []);
+                console.log('✅ Received', vaccines.length, 'vaccines from backend');
+
                 // If no vaccines found and AUTO_FALLBACK is enabled, use demo data
                 if (vaccines.length === 0 && AUTO_FALLBACK) {
                     console.log('No vaccines from API, using demo data as fallback');
-                    
+
                     // Apply filters to demo data
                     let filteredVaccines = [...MOCK_VACCINES];
-                    
+
                     if (search) {
                         filteredVaccines = filteredVaccines.filter(vaccine =>
                             vaccine.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -277,18 +291,36 @@ class VaccineService {
                         message: 'Vaccines retrieved successfully (demo data)'
                     };
                 }
-                
-                return data;            } else if (data.vaccines) {
+
+                // Your backend doesn't return pagination, so add it client-side
+                const startIndex = (page - 1) * limit;
+                const endIndex = startIndex + limit;
+                const paginatedVaccines = vaccines.slice(startIndex, endIndex);
+
+                return {
+                    success: true,
+                    data: {
+                        vaccines: paginatedVaccines,
+                        pagination: {
+                            page: page,
+                            limit: limit,
+                            total: vaccines.length,
+                            total_pages: Math.ceil(vaccines.length / limit)
+                        }
+                    },
+                    message: data.message || 'Vaccines retrieved successfully'
+                };
+            } else if (data.vaccines) {
                 // Handle direct vaccines array response
                 const vaccines = Array.isArray(data.vaccines) ? data.vaccines : [];
-                
+
                 // If no vaccines found and AUTO_FALLBACK is enabled, use demo data
                 if (vaccines.length === 0 && AUTO_FALLBACK) {
                     console.log('No vaccines from direct API response, using demo data as fallback');
-                    
+
                     // Apply filters to demo data
                     let filteredVaccines = [...MOCK_VACCINES];
-                    
+
                     if (search) {
                         filteredVaccines = filteredVaccines.filter(vaccine =>
                             vaccine.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -333,7 +365,7 @@ class VaccineService {
                         message: 'Vaccines retrieved successfully (demo data fallback)'
                     };
                 }
-                
+
                 return {
                     success: true,
                     data: {
@@ -344,17 +376,18 @@ class VaccineService {
                         total_pages: Math.ceil((data.count || vaccines.length || 0) / limit)
                     },
                     message: 'Vaccines retrieved successfully'
-                };            } else {
+                };
+            } else {
                 // Handle empty response
                 console.log('No vaccines found or empty response');
-                
+
                 // If AUTO_FALLBACK is enabled and no data found, use demo data
                 if (AUTO_FALLBACK) {
                     console.log('Using demo data as fallback for empty response');
-                    
+
                     // Apply filters to demo data
                     let filteredVaccines = [...MOCK_VACCINES];
-                    
+
                     if (search) {
                         filteredVaccines = filteredVaccines.filter(vaccine =>
                             vaccine.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -399,7 +432,7 @@ class VaccineService {
                         message: 'Vaccines retrieved successfully (demo fallback)'
                     };
                 }
-                
+
                 // Return empty but successful result
                 return {
                     success: true,
@@ -415,7 +448,58 @@ class VaccineService {
             }
         } catch (error) {
             console.error('Get vaccines error:', error);
-            
+
+            // If endpoint not found, use demo data
+            if (error.message === 'ENDPOINT_NOT_FOUND' || error.message.includes('JSON Parse')) {
+                console.log('📦 Using demo vaccine data (backend endpoint not available)');
+
+                // Apply filters to demo data
+                let filteredVaccines = [...MOCK_VACCINES];
+
+                if (search) {
+                    filteredVaccines = filteredVaccines.filter(vaccine =>
+                        vaccine.name.toLowerCase().includes(search.toLowerCase()) ||
+                        vaccine.brand.toLowerCase().includes(search.toLowerCase()) ||
+                        vaccine.description.toLowerCase().includes(search.toLowerCase())
+                    );
+                }
+
+                if (category) {
+                    filteredVaccines = filteredVaccines.filter(vaccine =>
+                        vaccine.category.toLowerCase() === category.toLowerCase()
+                    );
+                }
+
+                if (age_group) {
+                    filteredVaccines = filteredVaccines.filter(vaccine =>
+                        vaccine.age_groups.includes(age_group)
+                    );
+                }
+
+                if (required === 'true') {
+                    filteredVaccines = filteredVaccines.filter(vaccine => vaccine.is_required);
+                }
+
+                // Pagination
+                const startIndex = (page - 1) * limit;
+                const endIndex = startIndex + limit;
+                const paginatedVaccines = filteredVaccines.slice(startIndex, endIndex);
+
+                return {
+                    success: true,
+                    data: {
+                        vaccines: paginatedVaccines,
+                        pagination: {
+                            page: page,
+                            limit: limit,
+                            total: filteredVaccines.length,
+                            total_pages: Math.ceil(filteredVaccines.length / limit)
+                        }
+                    },
+                    message: 'Demo vaccines loaded (backend endpoint not available)'
+                };
+            }
+
             // Handle different types of errors
             if (error.message.includes('fetch') || error.message.includes('Network')) {
                 return {
@@ -423,14 +507,14 @@ class VaccineService {
                     message: 'Network error. Please check your internet connection and try again.',
                 };
             }
-            
+
             if (error.message.includes('401') || error.message.includes('Unauthorized')) {
                 return {
                     success: false,
                     message: 'Authentication required. Please login again.',
                 };
             }
-            
+
             return {
                 success: false,
                 message: error.message || 'Failed to fetch vaccines. Please try again.',
@@ -453,8 +537,8 @@ class VaccineService {
                 // Extended vaccine details for single vaccine view
                 const extendedVaccine = {
                     ...vaccine,
-                    dose_schedule: vaccine.doses_required > 1 ? 
-                        ['birth', '1-2 months', '6-18 months'].slice(0, vaccine.doses_required) : 
+                    dose_schedule: vaccine.doses_required > 1 ?
+                        ['birth', '1-2 months', '6-18 months'].slice(0, vaccine.doses_required) :
                         ['single dose'],
                     precautions: ['moderate illness', 'pregnancy consultation'],
                     storage_requirements: '2-8°C',

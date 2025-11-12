@@ -178,7 +178,7 @@ const ProfilePage = ({ navigation }) => {
 
                     <View style={styles.infoItem}>
                         <Text style={styles.infoLabel}>User ID</Text>
-                        <Text style={styles.infoValue}>{user.id || 'N/A'}</Text>
+                        <Text style={styles.infoValue}>{`${user.id || 'N/A'}`}</Text>
                     </View>
                 </View>
 

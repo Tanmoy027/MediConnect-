@@ -90,7 +90,7 @@ const ProfileScreen = ({ navigation }) => {
 
                     <View style={styles.detailRow}>
                         <Text style={styles.detailLabel}>User ID:</Text>
-                        <Text style={styles.detailValue}>{user.id || 'N/A'}</Text>
+                        <Text style={styles.detailValue}>{`${user.id || 'N/A'}`}</Text>
                     </View>
 
                     <View style={styles.detailRow}>

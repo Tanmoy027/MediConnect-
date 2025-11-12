@@ -5,3 +5,5 @@ export { default as FindVaccineScreen } from './FindVaccineScreen';
 export { default as HospitalDetailsScreen } from './HospitalDetailsScreen';
 export { default as ProfileScreen } from './ProfileScreen';
 export { default as ProfilePage } from './ProfilePage';
+export { default as CampaignDashboardScreen } from './CampaignDashboardScreen';
+export { default as CampaignDetailsScreen } from './CampaignDetailsScreen';

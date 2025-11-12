@@ -21,7 +21,9 @@ class AuthenticationService {
         this.currentUser = null;
         this.isAuthenticated = false;
         this.authToken = null;
-    }    // Initialize authentication state on app start
+    }
+
+    // Initialize authentication state on app start
     async initializeAuth() {
         try {
             const token = await storage.getItem(STORAGE_KEYS.USER_TOKEN);
@@ -77,25 +79,37 @@ class AuthenticationService {
             });
 
             const data = await response.json();
-            console.log('Login API Response:', JSON.stringify(data, null, 2)); if (!response.ok) {
-                throw new Error(data.error || data.message || 'Login failed');
-            } if (data.success) {
-                // Check if we have user data - your API returns data.data.user
-                console.log('Checking user data:', data.data);
-                console.log('Full data structure:', data);
+            console.log('Login API Response:', JSON.stringify(data, null, 2));
 
-                // Your API returns data in data.data.user format
+            if (!response.ok) {
+                throw new Error(data.error || data.message || 'Login failed');
+            }
+
+            if (data.success) {
+                // Check if we have user data and session token
+                console.log('Login response data:', JSON.stringify(data, null, 2));
+
+                // Your backend should return: { success: true, data: { user, session } }
                 const userData = data.data?.user || data.user;
+                const session = data.data?.session || data.session;
 
                 if (userData && userData.id) {
-                    // For APIs that don't return session tokens, create a simple token
-                    const simpleToken = `user-token-${userData.id}-${Date.now()}`;
+                    // Use the Supabase access token if available, otherwise create a temporary token
+                    const accessToken = session?.access_token || `temp-token-${userData.id}-${Date.now()}`;
+                    const refreshToken = session?.refresh_token;
+
+                    if (!session?.access_token) {
+                        console.warn('⚠️ No access_token in response! Using temporary token.');
+                        console.warn('⚠️ Campaign registration will not work until backend returns session.access_token');
+                    } else {
+                        console.log('✅ Storing Supabase access token');
+                    }
 
                     // Store authentication data
                     await this.storeAuthData(
-                        simpleToken,
+                        accessToken,
                         userData,
-                        null // No refresh token
+                        refreshToken
                     );
 
                     return {
@@ -163,7 +177,9 @@ class AuthenticationService {
             });
 
             const data = await response.json();
-            console.log('Registration API Response:', JSON.stringify(data, null, 2)); if (!response.ok) {
+            console.log('Registration API Response:', JSON.stringify(data, null, 2));
+
+            if (!response.ok) {
                 throw new Error(data.message || data.error || 'Registration failed');
             }
 
