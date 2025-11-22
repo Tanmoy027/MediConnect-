@@ -10,17 +10,16 @@ import {
     ActivityIndicator,
     Image,
 } from 'react-native';
-import { campaignService } from '../api';
+import { campaignService, authService } from '../api';
 import { useAuth } from '../context';
 
 const CampaignDashboardScreen = ({ navigation }) => {
     const [campaigns, setCampaigns] = useState([]);
     const [userRegistrations, setUserRegistrations] = useState([]);
-    const [registeredCampaignIds, setRegisteredCampaignIds] = useState(new Set());
     const [userStats, setUserStats] = useState(null);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-    const [activeTab, setActiveTab] = useState('upcoming'); // my-registrations, upcoming
+    const [activeTab, setActiveTab] = useState('all'); // all, upcoming, my-registrations
     const { user } = useAuth();
 
     useEffect(() => {
@@ -49,7 +48,7 @@ const CampaignDashboardScreen = ({ navigation }) => {
     const loadCampaigns = async (filters = {}) => {
         try {
             console.log('📱 Loading campaigns with filters:', filters);
-            const response = await campaignService.getAllCampaigns(filters);
+            const response = await authService.getCampaigns(filters);
             console.log('📱 Response received:', response);
             console.log('📱 Response.success:', response.success);
             console.log('📱 Response.data:', response.data);
@@ -80,55 +79,37 @@ const CampaignDashboardScreen = ({ navigation }) => {
                 setCampaigns(campaignsArray);
             } else {
                 console.log('📱 ❌ Response.success is false');
-                Alert.alert('API Error', 'Backend returned success: false');
+                console.error('Campaign fetch error: Backend returned success: false');
             }
         } catch (error) {
-            console.error('❌ Error loading campaigns:', error);
-            console.error('❌ Error stack:', error.stack);
-            Alert.alert('API Error', error.message || 'Failed to load campaigns');
+            console.error('Campaign fetch error:', error);
+            // Don't show alert for API errors, just log them
         }
     };
 
     const loadUserRegistrations = async () => {
         try {
-            if (!user) {
-                setUserRegistrations([]);
-                setRegisteredCampaignIds(new Set());
-                return;
-            }
-
-            console.log('📋 Loading user registrations...');
-            const response = await campaignService.getUserRegistrations();
-            console.log('📋 Registrations response:', response);
-
+            if (!user) return;
+            const response = await authService.getUserCampaignRegistrations();
             if (response.success) {
-                // Handle both response.data (array) and response.data.registrations (object with array)
-                const registrations = Array.isArray(response.data)
-                    ? response.data
-                    : (response.data?.registrations || []);
-
-                console.log('📋 Found', registrations.length, 'registrations');
-                setUserRegistrations(registrations);
-
-                // Create a Set of registered campaign IDs for quick lookup
-                const ids = new Set(registrations.map(reg => reg.campaign_id));
-                console.log('📋 Registered campaign IDs:', Array.from(ids));
-                setRegisteredCampaignIds(ids);
+                setUserRegistrations(response.data || []);
             }
         } catch (error) {
-            console.error('Error loading user registrations:', error);
+            console.error('User registrations fetch error:', error);
+            // Don't show alert for API errors, just log them
         }
     };
 
     const loadUserStats = async () => {
         try {
             if (!user) return;
-            const response = await campaignService.getUserCampaignStats();
+            const response = await authService.getUserCampaignStats();
             if (response.success) {
-                setUserStats(response.data.stats);
+                setUserStats(response.data?.stats || null);
             }
         } catch (error) {
-            console.error('Error loading user stats:', error);
+            console.error('User stats fetch error:', error);
+            // Don't show alert for API errors, just log them
         }
     };
 
@@ -142,16 +123,14 @@ const CampaignDashboardScreen = ({ navigation }) => {
         setActiveTab(tab);
         if (tab === 'upcoming') {
             await loadCampaigns({ status: 'upcoming' });
-        } else if (tab === 'my-registrations') {
-            await loadUserRegistrations();
+        } else if (tab === 'all') {
+            await loadCampaigns();
         }
     };
 
     const handleCampaignPress = (campaign) => {
         navigation.navigate('CampaignDetails', { campaign });
-    };
-
-    const handleRegisterPress = async (campaign) => {
+    }; const handleRegisterPress = async (campaign) => {
         if (!user) {
             Alert.alert('Login Required', 'Please login to register for campaigns.');
             return;
@@ -169,24 +148,11 @@ const CampaignDashboardScreen = ({ navigation }) => {
                             const response = await campaignService.registerForCampaign(campaign.id);
                             if (response.success) {
                                 Alert.alert('Success', 'Successfully registered for the campaign!');
-                                // Add to registered IDs immediately
-                                setRegisteredCampaignIds(prev => new Set([...prev, campaign.id]));
-                                // Refresh user registrations
-                                await loadUserRegistrations();
+                                // Refresh campaigns to update registration count
+                                await loadCampaigns();
                             }
                         } catch (error) {
-                            console.error('Registration error:', error);
-
-                            // Show helpful message for authentication errors
-                            if (error.message.includes('Unauthorized')) {
-                                Alert.alert(
-                                    'Backend Configuration Needed',
-                                    'Campaign registration requires the backend to return the Supabase session token during login.\n\nPlease check BACKEND_FIX_AUTH.md for the 2-minute fix.',
-                                    [{ text: 'OK' }]
-                                );
-                            } else {
-                                Alert.alert('Error', error.message || 'Failed to register for campaign');
-                            }
+                            Alert.alert('Error', error.message || 'Failed to register for campaign');
                         }
                     }
                 }
@@ -225,6 +191,7 @@ const CampaignDashboardScreen = ({ navigation }) => {
         if (!user || !userStats) return null;
 
         const totalReg = userStats.total_registrations ?? 0;
+        const completedDon = userStats.completed_donations ?? 0;
         const upcomingCamp = userStats.upcoming_campaigns ?? 0;
 
         return (
@@ -233,11 +200,15 @@ const CampaignDashboardScreen = ({ navigation }) => {
                 <View style={styles.statsRow}>
                     <View style={styles.statItem}>
                         <Text style={styles.statNumber}>{totalReg.toString()}</Text>
-                        <Text style={styles.statLabel}>Registered Campaigns</Text>
+                        <Text style={styles.statLabel}>Total Registered</Text>
+                    </View>
+                    <View style={styles.statItem}>
+                        <Text style={styles.statNumber}>{completedDon.toString()}</Text>
+                        <Text style={styles.statLabel}>Donations Made</Text>
                     </View>
                     <View style={styles.statItem}>
                         <Text style={styles.statNumber}>{upcomingCamp.toString()}</Text>
-                        <Text style={styles.statLabel}>Upcoming Campaigns</Text>
+                        <Text style={styles.statLabel}>Upcoming</Text>
                     </View>
                 </View>
             </View>
@@ -245,7 +216,12 @@ const CampaignDashboardScreen = ({ navigation }) => {
     };
 
     const renderCampaignCard = (campaign, showRegistrationButton = true) => {
-        if (!campaign) return null;
+        if (!campaign) {
+            console.log('⚠️ renderCampaignCard: campaign is null/undefined');
+            return null;
+        }
+
+        console.log('🎨 Rendering campaign:', campaign.id, campaign.title);
 
         return (
             <TouchableOpacity
@@ -275,7 +251,7 @@ const CampaignDashboardScreen = ({ navigation }) => {
                         }
                     </Text>
                     <Text style={styles.detailText}>
-                        📍 {campaign.location?.city || campaign.city}, {campaign.location?.state || campaign.state}
+                        👥 {`${campaign.registered_donors || 0}/${campaign.max_donors || 0} registered`}
                     </Text>
                 </View>
 
@@ -294,27 +270,21 @@ const CampaignDashboardScreen = ({ navigation }) => {
 
                 {showRegistrationButton && (
                     <View style={styles.actionContainer}>
-                        {registeredCampaignIds.has(campaign.id) ? (
-                            <View style={styles.registeredButton}>
-                                <Text style={styles.registeredButtonText}>✓ Registered</Text>
-                            </View>
-                        ) : (
-                            <TouchableOpacity
-                                style={[
-                                    styles.registerButton,
-                                    campaign.status !== 'upcoming' && styles.disabledButton
-                                ]}
-                                onPress={() => handleRegisterPress(campaign)}
-                                disabled={campaign.status !== 'upcoming'}
-                            >
-                                <Text style={[
-                                    styles.registerButtonText,
-                                    campaign.status !== 'upcoming' && styles.disabledButtonText
-                                ]}>
-                                    {campaign.status === 'upcoming' ? 'Register Now' : 'Registration Closed'}
-                                </Text>
-                            </TouchableOpacity>
-                        )}
+                        <TouchableOpacity
+                            style={[
+                                styles.registerButton,
+                                campaign.status !== 'upcoming' && styles.disabledButton
+                            ]}
+                            onPress={() => handleRegisterPress(campaign)}
+                            disabled={campaign.status !== 'upcoming'}
+                        >
+                            <Text style={[
+                                styles.registerButtonText,
+                                campaign.status !== 'upcoming' && styles.disabledButtonText
+                            ]}>
+                                {campaign.status === 'upcoming' ? 'Register Now' : 'Registration Closed'}
+                            </Text>
+                        </TouchableOpacity>
                     </View>
                 )}
             </TouchableOpacity>
@@ -386,11 +356,11 @@ const CampaignDashboardScreen = ({ navigation }) => {
             {user && renderStatsCard()}            {/* Tab Navigation */}
             <View style={styles.tabContainer}>
                 <TouchableOpacity
-                    style={[styles.tab, activeTab === 'my-registrations' && styles.activeTab]}
-                    onPress={() => handleTabChange('my-registrations')}
+                    style={[styles.tab, activeTab === 'all' && styles.activeTab]}
+                    onPress={() => handleTabChange('all')}
                 >
-                    <Text style={[styles.tabText, activeTab === 'my-registrations' && styles.activeTabText]}>
-                        My Registrations
+                    <Text style={[styles.tabText, activeTab === 'all' && styles.activeTabText]}>
+                        All Campaigns
                     </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -408,26 +378,20 @@ const CampaignDashboardScreen = ({ navigation }) => {
                 style={styles.content}
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
                 showsVerticalScrollIndicator={false}
-            >
-                {activeTab === 'my-registrations' ? (
-                    !userRegistrations || userRegistrations.length === 0 ? (
-                        <View style={styles.emptyState}>
-                            <Text style={styles.emptyStateText}>No registrations yet</Text>
-                            <Text style={styles.emptyStateSubtext}>Register for upcoming campaigns to see them here</Text>
-                        </View>
-                    ) : (
-                        userRegistrations.map(registration => renderRegistrationCard(registration))
-                    )
-                ) : (
-                    campaigns.length === 0 ? (
-                        <View style={styles.emptyState}>
-                            <Text style={styles.emptyStateText}>No upcoming campaigns</Text>
-                            <Text style={styles.emptyStateSubtext}>Check back later for new campaigns</Text>
-                        </View>
-                    ) : (
-                        campaigns.map(campaign => renderCampaignCard(campaign))
-                    )
-                )}
+            >                {campaigns.length === 0 ? (
+                <View style={styles.emptyState}>
+                    <Text style={styles.emptyStateText}>No campaigns available</Text>
+                    <Text style={styles.emptyStateSubtext}>Campaign data will load from your backend API</Text>
+                    <Text style={styles.apiStatusText}>
+                        Available API endpoints:{'\n'}
+                        • GET /api/campaigns ✓{'\n'}
+                        • GET /api/campaigns/[id] ✓{'\n'}
+                        • POST /api/campaigns/[id]/register ✓
+                    </Text>
+                </View>
+            ) : (
+                campaigns.map(campaign => renderCampaignCard(campaign))
+            )}
             </ScrollView>
         </View>
     );
@@ -635,17 +599,6 @@ const styles = StyleSheet.create({
     },
     disabledButtonText: {
         color: '#8E8E93',
-    },
-    registeredButton: {
-        backgroundColor: '#34C759',
-        paddingVertical: 12,
-        borderRadius: 8,
-        alignItems: 'center',
-    },
-    registeredButtonText: {
-        fontSize: 16,
-        fontWeight: '600',
-        color: '#FFFFFF',
     },
     registeredContainer: {
         flexDirection: 'row',

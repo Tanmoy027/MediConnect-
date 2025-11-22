@@ -12,31 +12,101 @@ import {
 } from 'react-native';
 import { useAuth } from '../context';
 import BottomNavigation from '../components/BottomNavigation';
-import { campaignService } from '../api';
+import authService from '../api/authentication';
 
 const HomeScreen = ({ navigation }) => {
     const [activeTab, setActiveTab] = useState('home');
-    const [campaigns, setCampaigns] = useState([]);
-    const [loadingCampaigns, setLoadingCampaigns] = useState(false);
     const { user, logout } = useAuth();
+    const [campaigns, setCampaigns] = useState([]);
+    const [isLoadingCampaigns, setIsLoadingCampaigns] = useState(true);
+    const [userRegistrations, setUserRegistrations] = useState([]);
 
     useEffect(() => {
-        loadLatestCampaigns();
+        fetchCampaigns();
+        fetchUserRegistrations();
     }, []);
 
-    const loadLatestCampaigns = async () => {
+    const fetchCampaigns = async () => {
         try {
-            setLoadingCampaigns(true);
-            const response = await campaignService.getAllCampaigns({ status: 'upcoming' });
-            if (response.success && Array.isArray(response.data)) {
-                // Get latest 3 campaigns
-                setCampaigns(response.data.slice(0, 3));
+            setIsLoadingCampaigns(true);
+            const result = await authService.getCampaigns({
+                status: 'upcoming',
+                limit: 3
+            });
+
+            if (result.success) {
+                setCampaigns(result.data || []);
+            } else {
+                console.error('Failed to fetch campaigns:', result.message);
             }
         } catch (error) {
-            console.error('Error loading campaigns:', error);
+            console.error('Campaign fetch error:', error);
         } finally {
-            setLoadingCampaigns(false);
+            setIsLoadingCampaigns(false);
         }
+    };
+
+    const fetchUserRegistrations = async () => {
+        try {
+            const result = await authService.getUserCampaignRegistrations();
+            if (result.success) {
+                setUserRegistrations(result.data || []);
+            }
+        } catch (error) {
+            console.error('User registrations fetch error:', error);
+        }
+    };
+
+    const handleCampaignRegister = async (campaignId, campaignTitle) => {
+        Alert.alert(
+            'Register for Campaign',
+            `Do you want to register for "${campaignTitle}"?`,
+            [
+                {
+                    text: 'Cancel',
+                    style: 'cancel',
+                },
+                {
+                    text: 'Register',
+                    onPress: async () => {
+                        try {
+                            const result = await authService.registerForCampaign(campaignId);
+                            if (result.success) {
+                                Alert.alert('Success', result.message || 'Successfully registered for campaign!');
+                                fetchUserRegistrations(); // Refresh registrations
+                            } else {
+                                Alert.alert('Error', result.message || 'Failed to register for campaign');
+                            }
+                        } catch (error) {
+                            Alert.alert('Error', 'Failed to register for campaign. Please try again.');
+                        }
+                    },
+                },
+            ]
+        );
+    };
+
+    const formatDate = (dateString) => {
+        if (!dateString) return '';
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+        });
+    };
+
+    const formatTime = (timeString) => {
+        if (!timeString) return '';
+        const [hours, minutes] = timeString.split(':');
+        const hour = parseInt(hours);
+        const ampm = hour >= 12 ? 'PM' : 'AM';
+        const displayHour = hour % 12 || 12;
+        return `${displayHour}:${minutes} ${ampm}`;
+    };
+
+    const isUserRegistered = (campaignId) => {
+        return userRegistrations.some(reg => reg.campaign_id === campaignId);
     }; const handleTabPress = (tabId) => {
         setActiveTab(tabId);
         // Handle navigation to different screens based on tabId
@@ -44,6 +114,8 @@ const HomeScreen = ({ navigation }) => {
             navigation.navigate('Profile');
         } else if (tabId === 'search') {
             navigation.navigate('FindHospital');
+        } else if (tabId === 'bookings') {
+            navigation.navigate('MyBookings');
         }
         console.log('Tab pressed:', tabId);
     };
@@ -98,9 +170,15 @@ const HomeScreen = ({ navigation }) => {
         },
         {
             id: 5,
-            title: 'Find Animal Hospital',
-            icon: '🐾',
-            onPress: () => console.log('Find Animal Hospital pressed'),
+            title: 'Find Ambulance',
+            icon: '🚑',
+            onPress: () => navigation.navigate('FindAmbulance'),
+        },
+        {
+            id: 6,
+            title: 'My Bookings',
+            icon: '�',
+            onPress: () => navigation.navigate('MyBookings'),
         },
     ];
 
@@ -146,7 +224,7 @@ const HomeScreen = ({ navigation }) => {
                             </TouchableOpacity>
                         ))}
                     </View>
-                </View>                {/* Upcoming Blood Donation Camps */}
+                </View>                {/* Blood Donation Campaigns */}
                 <View style={styles.section}>
                     <View style={styles.sectionHeader}>
                         <Text style={styles.sectionTitle}>Blood Donation Campaigns</Text>
@@ -158,48 +236,67 @@ const HomeScreen = ({ navigation }) => {
                         </TouchableOpacity>
                     </View>
 
-                    {loadingCampaigns ? (
+                    {isLoadingCampaigns ? (
                         <View style={styles.loadingContainer}>
-                            <ActivityIndicator size="small" color="#007AFF" />
+                            <ActivityIndicator size="large" color="#E53E3E" />
+                            <Text style={styles.loadingText}>Loading campaigns...</Text>
                         </View>
                     ) : campaigns.length > 0 ? (
                         campaigns.map((campaign) => (
-                            <TouchableOpacity
-                                key={campaign.id}
-                                style={styles.campaignCard}
-                                onPress={() => navigation.navigate('CampaignDetails', { campaign })}
-                            >
-                                <View style={styles.campaignCardHeader}>
-                                    <Text style={styles.campaignCardTitle}>{campaign.title}</Text>
-                                    <View style={[styles.campaignStatusBadge, { backgroundColor: '#007AFF' }]}>
-                                        <Text style={styles.campaignStatusText}>UPCOMING</Text>
+                            <View key={campaign.id} style={styles.campaignCard}>
+                                <View style={styles.campaignHeader}>
+                                    <View style={styles.campaignInfo}>
+                                        <Text style={styles.campaignTitle}>{campaign.title || 'Untitled Campaign'}</Text>
+                                        <Text style={styles.campaignLocation}>
+                                            📍 {campaign.venue || campaign.location || 'Location TBD'}
+                                        </Text>
+                                        <Text style={styles.campaignCity}>
+                                            {campaign.city || 'City'}{campaign.state ? `, ${campaign.state}` : ''}
+                                        </Text>
+                                        <Text style={styles.campaignDate}>
+                                            📅 {formatDate(campaign.start_date)}{campaign.start_time && campaign.end_time ? ` • ${formatTime(campaign.start_time)} - ${formatTime(campaign.end_time)}` : ''}
+                                        </Text>
+                                        {campaign.blood_types_needed && Array.isArray(campaign.blood_types_needed) && campaign.blood_types_needed.length > 0 && (
+                                            <Text style={styles.bloodTypesNeeded}>
+                                                🩸 Need: {campaign.blood_types_needed.join(', ')}
+                                            </Text>
+                                        )}
+                                        <Text style={styles.campaignProgress}>
+                                            👥 {campaign.registered_donors || 0}/{campaign.target_donors || 0} registered
+                                        </Text>
+                                    </View>
+                                    <View style={styles.campaignActions}>
+                                        {isUserRegistered(campaign.id) ? (
+                                            <View style={styles.registeredBadge}>
+                                                <Text style={styles.registeredText}>✓ Registered</Text>
+                                            </View>
+                                        ) : (
+                                            <TouchableOpacity
+                                                style={styles.registerButton}
+                                                onPress={() => handleCampaignRegister(campaign.id, campaign.title)}
+                                            >
+                                                <Text style={styles.registerButtonText}>Register</Text>
+                                            </TouchableOpacity>
+                                        )}
                                     </View>
                                 </View>
-                                <Text style={styles.campaignCardLocation}>
-                                    📍 {campaign.location?.city || campaign.city}, {campaign.location?.state || campaign.state}
-                                </Text>
-                                <Text style={styles.campaignCardDate}>
-                                    📅 {campaign.date ? new Date(campaign.date).toLocaleDateString() : 'Date TBD'}
-                                </Text>
-                                <Text style={styles.campaignCardOrganizer}>
-                                    🏛️ {campaign.organizer || 'Unknown Organizer'}
-                                </Text>
-                            </TouchableOpacity>
+                                {campaign.description && (
+                                    <Text style={styles.campaignDescription}>{campaign.description}</Text>
+                                )}
+                            </View>
                         ))
                     ) : (
-                        <TouchableOpacity
-                            style={styles.campaignButton}
-                            onPress={() => navigation.navigate('CampaignDashboard')}
-                        >
-                            <View style={styles.campaignButtonContent}>
-                                <Text style={styles.campaignButtonIcon}>🩸</Text>
-                                <View style={styles.campaignButtonText}>
-                                    <Text style={styles.campaignButtonTitle}>View All Campaigns</Text>
-                                    <Text style={styles.campaignButtonSubtitle}>Find blood donation drives near you</Text>
-                                </View>
-                                <Text style={styles.campaignButtonArrow}>→</Text>
-                            </View>
-                        </TouchableOpacity>
+                        <View style={styles.noCampaignsContainer}>
+                            <Text style={styles.noCampaignsIcon}>🩸</Text>
+                            <Text style={styles.noCampaignsTitle}>No Upcoming Campaigns</Text>
+                            <Text style={styles.noCampaignsText}>Check back later for new blood donation drives</Text>
+                            <TouchableOpacity
+                                style={styles.viewAllCampaignsButton}
+                                onPress={() => navigation.navigate('CampaignDashboard')}
+                            >
+                                <Text style={styles.viewAllCampaignsText}>View All Campaigns</Text>
+                            </TouchableOpacity>
+                        </View>
                     )}
                 </View>
             </ScrollView>
@@ -401,14 +498,19 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
     },
     loadingContainer: {
-        padding: 20,
         alignItems: 'center',
+        paddingVertical: 40,
+    },
+    loadingText: {
+        marginTop: 10,
+        fontSize: 16,
+        color: '#666666',
     },
     campaignCard: {
         backgroundColor: '#FFFFFF',
         borderRadius: 12,
         padding: 16,
-        marginBottom: 12,
+        marginBottom: 16,
         elevation: 2,
         shadowColor: '#000',
         shadowOffset: {
@@ -420,42 +522,109 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: '#F0F0F0',
     },
-    campaignCardHeader: {
+    campaignHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'flex-start',
+    },
+    campaignInfo: {
+        flex: 1,
+        paddingRight: 12,
+    },
+    campaignTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#E53E3E',
         marginBottom: 8,
     },
-    campaignCardTitle: {
+    campaignLocation: {
         fontSize: 16,
+        color: '#333333',
+        marginBottom: 4,
+    },
+    campaignCity: {
+        fontSize: 14,
+        color: '#666666',
+        marginBottom: 6,
+    },
+    campaignDate: {
+        fontSize: 14,
+        color: '#666666',
+        marginBottom: 4,
+    },
+    bloodTypesNeeded: {
+        fontSize: 14,
+        color: '#E53E3E',
+        fontWeight: '600',
+        marginBottom: 4,
+    },
+    campaignProgress: {
+        fontSize: 14,
+        color: '#007AFF',
+        fontWeight: '500',
+    },
+    campaignActions: {
+        alignItems: 'flex-end',
+    },
+    registerButton: {
+        backgroundColor: '#E53E3E',
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 8,
+    },
+    registerButtonText: {
+        color: '#FFFFFF',
+        fontSize: 14,
+        fontWeight: '600',
+    },
+    registeredBadge: {
+        backgroundColor: '#D4EDDA',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 8,
+    },
+    registeredText: {
+        color: '#155724',
+        fontSize: 14,
+        fontWeight: '600',
+    },
+    campaignDescription: {
+        fontSize: 14,
+        color: '#666666',
+        marginTop: 12,
+        lineHeight: 20,
+    },
+    noCampaignsContainer: {
+        alignItems: 'center',
+        paddingVertical: 40,
+        paddingHorizontal: 20,
+    },
+    noCampaignsIcon: {
+        fontSize: 48,
+        marginBottom: 16,
+    },
+    noCampaignsTitle: {
+        fontSize: 18,
         fontWeight: 'bold',
         color: '#333333',
-        flex: 1,
-        marginRight: 8,
+        marginBottom: 8,
     },
-    campaignStatusBadge: {
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        borderRadius: 12,
+    noCampaignsText: {
+        fontSize: 14,
+        color: '#666666',
+        textAlign: 'center',
+        marginBottom: 20,
     },
-    campaignStatusText: {
-        fontSize: 10,
-        fontWeight: 'bold',
+    viewAllCampaignsButton: {
+        backgroundColor: '#E53E3E',
+        paddingHorizontal: 20,
+        paddingVertical: 12,
+        borderRadius: 8,
+    },
+    viewAllCampaignsText: {
         color: '#FFFFFF',
-    },
-    campaignCardLocation: {
-        fontSize: 14,
-        color: '#666666',
-        marginBottom: 4,
-    },
-    campaignCardDate: {
-        fontSize: 14,
-        color: '#666666',
-        marginBottom: 4,
-    },
-    campaignCardOrganizer: {
-        fontSize: 14,
-        color: '#666666',
+        fontSize: 16,
+        fontWeight: '600',
     },
 });
 

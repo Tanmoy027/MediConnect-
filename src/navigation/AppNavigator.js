@@ -1,18 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { useAuth } from '../context';
-import { SplashScreen, OnboardingScreen, FindHospitalScreen, FindVaccineScreen, HospitalDetailsScreen, ProfileScreen, CampaignDashboardScreen, CampaignDetailsScreen } from '../screens';
+import { SplashScreen, OnboardingScreen, FindHospitalScreen, FindVaccineScreen, AmbulanceFinderScreen, HospitalDetailsScreen, ProfileScreen, CampaignDashboardScreen, CampaignDetailsScreen } from '../screens';
 import ProfilePage from '../screens/ProfilePage';
+import HospitalBookingScreen from '../screens/HospitalBookingScreen';
+import MyBookingsScreen from '../screens/MyBookingsScreen';
 import { LoginScreen, RegisterScreen } from '../auth';
 import { HomeScreen } from '../main';
 
 const AppNavigator = () => {
-    const { isLoading, isAuthenticated } = useAuth();    const [showSplash, setShowSplash] = useState(true);
+    const { isLoading, isAuthenticated } = useAuth(); const [showSplash, setShowSplash] = useState(true);
     const [showOnboarding, setShowOnboarding] = useState(false);
     const [currentAuthScreen, setCurrentAuthScreen] = useState('login');
     const [currentMainScreen, setCurrentMainScreen] = useState('home');
     const [selectedHospital, setSelectedHospital] = useState(null);
     const [selectedCampaign, setSelectedCampaign] = useState(null);
+    const [bookingHospital, setBookingHospital] = useState(null);
 
     useEffect(() => {
         // Show splash screen for 3 seconds
@@ -32,17 +35,29 @@ const AppNavigator = () => {
                 setCurrentMainScreen('findHospital');
             } else if (screenName === 'FindVaccine') {
                 setCurrentMainScreen('findVaccine');
+            } else if (screenName === 'FindAmbulance') {
+                setCurrentMainScreen('findAmbulance');
             } else if (screenName === 'HospitalDetails') {
                 setSelectedHospital(params?.hospital);
                 setCurrentMainScreen('hospitalDetails');
             } else if (screenName === 'Home') {
-                setCurrentMainScreen('home');            } else if (screenName === 'Profile') {
+                setCurrentMainScreen('home');
+            } else if (screenName === 'Profile') {
                 setCurrentMainScreen('profile');
             } else if (screenName === 'CampaignDashboard') {
                 setCurrentMainScreen('campaignDashboard');
             } else if (screenName === 'CampaignDetails') {
                 setSelectedCampaign(params?.campaign);
                 setCurrentMainScreen('campaignDetails');
+            } else if (screenName === 'HospitalBooking') {
+                setBookingHospital(params?.hospital);
+                setCurrentMainScreen('hospitalBooking');
+            } else if (screenName === 'MyBookings') {
+                setCurrentMainScreen('myBookings');
+            } else if (screenName === 'Login') {
+                // Handle logout navigation
+                setCurrentAuthScreen('login');
+                setCurrentMainScreen('home');
             }
         },
         goBack: () => {
@@ -51,11 +66,25 @@ const AppNavigator = () => {
             } else if (currentMainScreen === 'findHospital') {
                 setCurrentMainScreen('home');
             } else if (currentMainScreen === 'findVaccine') {
-                setCurrentMainScreen('home');            } else if (currentMainScreen === 'profile') {
+                setCurrentMainScreen('home');
+            } else if (currentMainScreen === 'findAmbulance') {
+                setCurrentMainScreen('home');
+            } else if (currentMainScreen === 'profile') {
                 setCurrentMainScreen('home');
             } else if (currentMainScreen === 'campaignDetails') {
                 setCurrentMainScreen('campaignDashboard');
             } else if (currentMainScreen === 'campaignDashboard') {
+                setCurrentMainScreen('home');
+            } else if (currentMainScreen === 'hospitalBooking') {
+                setCurrentMainScreen('hospitalDetails');
+            } else if (currentMainScreen === 'myBookings') {
+                setCurrentMainScreen('home');
+            }
+        },
+        reset: (resetConfig) => {
+            // Handle navigation reset for logout scenarios
+            if (resetConfig?.routes?.[0]?.name === 'Login') {
+                setCurrentAuthScreen('login');
                 setCurrentMainScreen('home');
             }
         }
@@ -79,13 +108,20 @@ const AppNavigator = () => {
             return <FindHospitalScreen navigation={navigation} />;
         } else if (currentMainScreen === 'findVaccine') {
             return <FindVaccineScreen navigation={navigation} />;
+        } else if (currentMainScreen === 'findAmbulance') {
+            return <AmbulanceFinderScreen navigation={navigation} />;
         } else if (currentMainScreen === 'hospitalDetails') {
-            return <HospitalDetailsScreen navigation={navigation} route={{ params: { hospital: selectedHospital } }} />;        } else if (currentMainScreen === 'profile') {
+            return <HospitalDetailsScreen navigation={navigation} route={{ params: { hospital: selectedHospital } }} />;
+        } else if (currentMainScreen === 'profile') {
             return <ProfilePage navigation={navigation} />;
         } else if (currentMainScreen === 'campaignDashboard') {
             return <CampaignDashboardScreen navigation={navigation} />;
         } else if (currentMainScreen === 'campaignDetails') {
             return <CampaignDetailsScreen navigation={navigation} route={{ params: { campaign: selectedCampaign } }} />;
+        } else if (currentMainScreen === 'hospitalBooking') {
+            return <HospitalBookingScreen navigation={navigation} route={{ params: { hospital: bookingHospital } }} />;
+        } else if (currentMainScreen === 'myBookings') {
+            return <MyBookingsScreen navigation={navigation} />;
         } else {
             return <HomeScreen navigation={navigation} />;
         }

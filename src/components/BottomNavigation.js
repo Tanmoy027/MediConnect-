@@ -10,7 +10,7 @@ const BottomNavigation = ({ activeTab, onTabPress }) => {
     const tabs = [
         { id: 'home', label: 'Home', icon: '🏠' },
         { id: 'search', label: 'Search', icon: '🔍' },
-        { id: 'donate', label: 'Donate', icon: '❤️' },
+        { id: 'bookings', label: 'Bookings', icon: '📅' },
         { id: 'profile', label: 'Profile', icon: '👤' },
     ];
 

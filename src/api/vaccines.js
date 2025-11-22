@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Base API URL
-const API_BASE_URL = 'https://test-mediconnect.vercel.app/api';
+const API_BASE_URL = 'https://test2medicoonect.vercel.app/api';
 
 // Demo mode for testing - will auto-fallback to demo data if API returns empty
 const DEMO_MODE = false; // Set to false when API is ready
@@ -831,6 +831,450 @@ class VaccineService {
             return {
                 success: false,
                 message: error.message || 'Failed to fetch age groups',
+            };
+        }
+    }
+
+    // Get vaccine availability at specific locations
+    async getVaccineAvailability(vaccineId, location = null, ageGroup = null) {
+        try {
+            await this.initializeAuth();
+
+            if (DEMO_MODE) {
+                await new Promise(resolve => setTimeout(resolve, 600));
+
+                const vaccine = MOCK_VACCINES.find(v => v.id === vaccineId);
+                if (!vaccine) {
+                    throw new Error('Vaccine not found');
+                }
+
+                // Check age group compatibility
+                if (ageGroup && !vaccine.age_groups.includes(ageGroup)) {
+                    return {
+                        success: true,
+                        data: {
+                            availability: {
+                                vaccine_id: vaccineId,
+                                vaccine_name: vaccine.name,
+                                age_group_compatible: false,
+                                locations: []
+                            }
+                        },
+                        message: `${vaccine.name} is not available for ${ageGroup} age group`
+                    };
+                }
+
+                // Mock availability data with enhanced booking information
+                const availability = {
+                    vaccine_id: vaccineId,
+                    vaccine_name: vaccine.name,
+                    brand: vaccine.brand,
+                    age_group_compatible: !ageGroup || vaccine.age_groups.includes(ageGroup),
+                    total_locations: 4,
+                    locations: [
+                        {
+                            hospital_id: 'hospital-1',
+                            hospital_name: 'City General Hospital',
+                            hospital_type: 'public',
+                            available_doses: Math.floor(Math.random() * 50) + 10,
+                            next_available_date: '2025-01-20',
+                            latest_available_date: '2025-01-25',
+                            cost: vaccine.cost,
+                            distance: 2.3,
+                            booking_enabled: true,
+                            appointment_required: true,
+                            walk_in_available: false,
+                            operating_hours: {
+                                weekdays: '08:00-17:00',
+                                weekends: '09:00-15:00'
+                            },
+                            contact_phone: '+1-555-0123',
+                            insurance_accepted: true
+                        },
+                        {
+                            hospital_id: 'hospital-3',
+                            hospital_name: 'Community Wellness Clinic',
+                            hospital_type: 'public',
+                            available_doses: Math.floor(Math.random() * 30) + 5,
+                            next_available_date: '2025-01-22',
+                            latest_available_date: '2025-01-28',
+                            cost: vaccine.cost,
+                            distance: 3.1,
+                            booking_enabled: true,
+                            appointment_required: false,
+                            walk_in_available: true,
+                            operating_hours: {
+                                weekdays: '07:00-19:00',
+                                weekends: '08:00-16:00'
+                            },
+                            contact_phone: '+1-555-0789',
+                            insurance_accepted: true
+                        },
+                        {
+                            hospital_id: 'hospital-2',
+                            hospital_name: 'Metro Health Center',
+                            hospital_type: 'private',
+                            available_doses: Math.floor(Math.random() * 25) + 8,
+                            next_available_date: '2025-01-21',
+                            latest_available_date: '2025-01-26',
+                            cost: vaccine.cost + 15, // Private center markup
+                            distance: 1.8,
+                            booking_enabled: true,
+                            appointment_required: true,
+                            walk_in_available: false,
+                            operating_hours: {
+                                weekdays: '06:00-20:00',
+                                weekends: '08:00-18:00'
+                            },
+                            contact_phone: '+1-555-0456',
+                            insurance_accepted: true
+                        }
+                    ]
+                };
+
+                return {
+                    success: true,
+                    data: { availability },
+                    message: 'Vaccine availability retrieved successfully'
+                };
+            }
+
+            // Real API call
+            const queryParams = new URLSearchParams();
+            if (location) {
+                queryParams.append('location', location);
+            }
+            if (ageGroup) {
+                queryParams.append('age_group', ageGroup);
+            }
+
+            const response = await fetch(`${API_BASE_URL}/vaccines/${vaccineId}/availability?${queryParams}`, {
+                method: 'GET',
+                headers: this.getAuthHeaders(),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || data.message || 'Failed to fetch vaccine availability');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('Get vaccine availability error:', error);
+            return {
+                success: false,
+                message: error.message || 'Failed to fetch vaccine availability',
+            };
+        }
+    }
+
+    // Get vaccination centers offering specific vaccines
+    async getVaccinationCenters(vaccineId, location = null, radius = 10) {
+        try {
+            await this.initializeAuth();
+
+            if (DEMO_MODE) {
+                await new Promise(resolve => setTimeout(resolve, 700));
+
+                const vaccine = MOCK_VACCINES.find(v => v.id === vaccineId);
+                if (!vaccine) {
+                    throw new Error('Vaccine not found');
+                }
+
+                const centers = [
+                    {
+                        id: 'center-1',
+                        name: 'City Vaccination Center',
+                        type: 'public',
+                        address: '123 Health St, New York, NY 10001',
+                        phone: '+1-555-0123',
+                        email: 'info@cityvaccination.gov',
+                        coordinates: { latitude: 40.7128, longitude: -74.0060 },
+                        distance: 1.5,
+                        available_vaccines: [vaccineId],
+                        available_doses: Math.floor(Math.random() * 100) + 20,
+                        next_available_appointment: '2025-01-20T09:00:00Z',
+                        operating_hours: {
+                            weekdays: '08:00-18:00',
+                            weekends: '09:00-15:00'
+                        },
+                        appointment_required: true,
+                        walk_in_available: false,
+                        online_booking_available: true,
+                        cost: vaccine.cost,
+                        insurance_accepted: true,
+                        accepted_insurance: ['Medicare', 'Medicaid', 'Blue Cross', 'Aetna'],
+                        age_restrictions: vaccine.age_groups,
+                        special_requirements: vaccine.contraindications,
+                        booking_url: 'https://cityvaccination.gov/book',
+                        rating: 4.5,
+                        reviews_count: 234
+                    },
+                    {
+                        id: 'center-2',
+                        name: 'Metro Health Vaccination Hub',
+                        type: 'private',
+                        address: '456 Wellness Ave, New York, NY 10002',
+                        phone: '+1-555-0456',
+                        email: 'appointments@metrohealth.com',
+                        coordinates: { latitude: 40.7589, longitude: -73.9851 },
+                        distance: 2.8,
+                        available_vaccines: [vaccineId],
+                        available_doses: Math.floor(Math.random() * 75) + 15,
+                        next_available_appointment: '2025-01-21T10:30:00Z',
+                        operating_hours: {
+                            weekdays: '07:00-19:00',
+                            weekends: '08:00-16:00'
+                        },
+                        appointment_required: false,
+                        walk_in_available: true,
+                        online_booking_available: true,
+                        cost: vaccine.cost + 10, // Private center markup
+                        insurance_accepted: true,
+                        accepted_insurance: ['Blue Cross', 'Aetna', 'Cigna', 'UnitedHealth'],
+                        age_restrictions: vaccine.age_groups,
+                        special_requirements: vaccine.contraindications,
+                        booking_url: 'https://metrohealth.com/vaccine-booking',
+                        rating: 4.7,
+                        reviews_count: 156
+                    },
+                    {
+                        id: 'center-3',
+                        name: 'Community Health Clinic',
+                        type: 'community',
+                        address: '789 Community Blvd, New York, NY 10003',
+                        phone: '+1-555-0789',
+                        email: 'vaccines@communityhealth.org',
+                        coordinates: { latitude: 40.7282, longitude: -73.7949 },
+                        distance: 4.2,
+                        available_vaccines: [vaccineId],
+                        available_doses: Math.floor(Math.random() * 50) + 10,
+                        next_available_appointment: '2025-01-23T14:00:00Z',
+                        operating_hours: {
+                            weekdays: '09:00-17:00',
+                            weekends: '10:00-14:00'
+                        },
+                        appointment_required: true,
+                        walk_in_available: true,
+                        online_booking_available: false,
+                        cost: vaccine.cost - 5, // Community discount
+                        insurance_accepted: true,
+                        accepted_insurance: ['Medicare', 'Medicaid'],
+                        age_restrictions: vaccine.age_groups,
+                        special_requirements: vaccine.contraindications,
+                        booking_url: null,
+                        rating: 4.2,
+                        reviews_count: 89
+                    }
+                ];
+
+                // Filter by location radius if provided
+                const filteredCenters = location ?
+                    centers.filter(center => center.distance <= radius) :
+                    centers;
+
+                return {
+                    success: true,
+                    data: {
+                        vaccine_id: vaccineId,
+                        vaccine_name: vaccine.name,
+                        search_location: location,
+                        search_radius: radius,
+                        centers: filteredCenters,
+                        total: filteredCenters.length,
+                        total_available_doses: filteredCenters.reduce((sum, center) => sum + center.available_doses, 0)
+                    },
+                    message: 'Vaccination centers retrieved successfully'
+                };
+            }
+
+            // Real API call
+            const queryParams = new URLSearchParams();
+            if (location) {
+                queryParams.append('location', location);
+                queryParams.append('radius', radius.toString());
+            }
+
+            const response = await fetch(`${API_BASE_URL}/vaccines/${vaccineId}/centers?${queryParams}`, {
+                method: 'GET',
+                headers: this.getAuthHeaders(),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || data.message || 'Failed to fetch vaccination centers');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('Get vaccination centers error:', error);
+            return {
+                success: false,
+                message: error.message || 'Failed to fetch vaccination centers',
+            };
+        }
+    }
+
+    // Get available appointment time slots for vaccine booking
+    async getVaccineAppointmentSlots(centerId, vaccineId, date) {
+        try {
+            await this.initializeAuth();
+
+            if (DEMO_MODE) {
+                await new Promise(resolve => setTimeout(resolve, 600));
+
+                const vaccine = MOCK_VACCINES.find(v => v.id === vaccineId);
+                if (!vaccine) {
+                    throw new Error('Vaccine not found');
+                }
+
+                // Generate mock appointment slots
+                const timeSlots = [];
+                const startHour = 9;
+                const endHour = 17;
+                const slotDuration = 15; // 15-minute slots for vaccines
+
+                for (let hour = startHour; hour < endHour; hour++) {
+                    for (let minute = 0; minute < 60; minute += slotDuration) {
+                        const time = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+                        const isAvailable = Math.random() > 0.4; // 60% availability
+
+                        timeSlots.push({
+                            time,
+                            available: isAvailable,
+                            duration: slotDuration,
+                            cost: vaccine.cost,
+                            booking_deadline: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() // 24 hours from now
+                        });
+                    }
+                }
+
+                return {
+                    success: true,
+                    data: {
+                        center_id: centerId,
+                        vaccine_id: vaccineId,
+                        vaccine_name: vaccine.name,
+                        date,
+                        time_slots: timeSlots,
+                        total_slots: timeSlots.length,
+                        available_slots: timeSlots.filter(slot => slot.available).length,
+                        slot_duration: slotDuration,
+                        preparation_instructions: [
+                            'Bring valid ID and insurance card',
+                            'Arrive 15 minutes early',
+                            'Wear loose-fitting clothing',
+                            'Inform staff of any allergies'
+                        ]
+                    },
+                    message: 'Vaccine appointment slots retrieved successfully'
+                };
+            }
+
+            // Real API call
+            const queryParams = new URLSearchParams({
+                vaccine_id: vaccineId,
+                date
+            });
+
+            const response = await fetch(`${API_BASE_URL}/vaccination-centers/${centerId}/appointment-slots?${queryParams}`, {
+                method: 'GET',
+                headers: this.getAuthHeaders(),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || data.message || 'Failed to fetch vaccine appointment slots');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('Get vaccine appointment slots error:', error);
+            return {
+                success: false,
+                message: error.message || 'Failed to fetch vaccine appointment slots',
+            };
+        }
+    }
+
+    // Get vaccine booking requirements and eligibility
+    async getVaccineBookingRequirements(vaccineId, ageGroup = null, medicalHistory = null) {
+        try {
+            await this.initializeAuth();
+
+            if (DEMO_MODE) {
+                await new Promise(resolve => setTimeout(resolve, 400));
+
+                const vaccine = MOCK_VACCINES.find(v => v.id === vaccineId);
+                if (!vaccine) {
+                    throw new Error('Vaccine not found');
+                }
+
+                const requirements = {
+                    vaccine_id: vaccineId,
+                    vaccine_name: vaccine.name,
+                    eligible: !ageGroup || vaccine.age_groups.includes(ageGroup),
+                    age_requirements: vaccine.age_groups,
+                    contraindications: vaccine.contraindications,
+                    required_documents: [
+                        'Valid government-issued ID',
+                        'Insurance card (if applicable)',
+                        'Previous vaccination records (if applicable)'
+                    ],
+                    pre_vaccination_requirements: [
+                        'No fever or illness symptoms',
+                        'Not currently taking immunosuppressive medications',
+                        'No severe allergic reactions to previous vaccines'
+                    ],
+                    waiting_period_after: '15-30 minutes for observation',
+                    side_effects: vaccine.side_effects,
+                    doses_required: vaccine.doses_required,
+                    interval_between_doses: vaccine.interval_between_doses,
+                    booster_required: vaccine.booster_required,
+                    booster_interval: vaccine.booster_interval,
+                    cost_information: {
+                        base_cost: vaccine.cost,
+                        insurance_covered: vaccine.cost === 0 || vaccine.is_required,
+                        payment_methods: ['Cash', 'Credit Card', 'Insurance']
+                    }
+                };
+
+                return {
+                    success: true,
+                    data: { requirements },
+                    message: 'Vaccine booking requirements retrieved successfully'
+                };
+            }
+
+            // Real API call
+            const queryParams = new URLSearchParams();
+            if (ageGroup) {
+                queryParams.append('age_group', ageGroup);
+            }
+            if (medicalHistory) {
+                queryParams.append('medical_history', JSON.stringify(medicalHistory));
+            }
+
+            const response = await fetch(`${API_BASE_URL}/vaccines/${vaccineId}/booking-requirements?${queryParams}`, {
+                method: 'GET',
+                headers: this.getAuthHeaders(),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || data.message || 'Failed to fetch vaccine booking requirements');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('Get vaccine booking requirements error:', error);
+            return {
+                success: false,
+                message: error.message || 'Failed to fetch vaccine booking requirements',
             };
         }
     }

@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Base API URL
-const API_BASE_URL = 'https://test-mediconnect.vercel.app/api';
+const API_BASE_URL = 'https://test2medicoonect.vercel.app/api';
 
 // Demo mode for testing - DISABLED to use real API only
 const DEMO_MODE = false; // Always use real API
@@ -62,56 +62,65 @@ class CampaignService {
             }
 
             const data = await response.json();
+            console.log('✅ API Response Status:', response.status);
+            console.log('✅ API Response Data:', JSON.stringify(data, null, 2));
 
             if (!response.ok) {
                 console.error('❌ Backend error response:', data);
                 throw new Error(data.message || data.error || `Failed to fetch campaigns (Status: ${response.status})`);
             }
 
+            // Log the structure to help debug
+            console.log('✅ Response structure check:');
+            console.log('  - Has success field:', 'success' in data);
+            console.log('  - Has data field:', 'data' in data);
+            console.log('  - Has campaigns field:', data.data && 'campaigns' in data.data);
+            console.log('  - Data type:', typeof data);
+
+            if (data.data) {
+                console.log('  - data.data type:', typeof data.data);
+                console.log('  - data.data is array:', Array.isArray(data.data));
+                if (Array.isArray(data.data) && data.data.length > 0) {
+                    console.log('  - Array length:', data.data.length);
+                    console.log('  - First item keys:', Object.keys(data.data[0]));
+                }
+            }
+
             // Transform backend data to match app expectations
             if (data.success && Array.isArray(data.data)) {
+                console.log('🔄 Transforming', data.data.length, 'campaigns...');
                 data.data = data.data.map(campaign => {
-                    // Parse dates from backend format
-                    const startDate = campaign.start_date ? new Date(campaign.start_date) : null;
-                    const endDate = campaign.end_date ? new Date(campaign.end_date) : null;
-
                     const transformed = {
                         ...campaign,
-                        // Convert start_date to date and start_time
-                        date: startDate ? startDate.toISOString().split('T')[0] : null,
-                        start_time: startDate ? startDate.toTimeString().slice(0, 5) : null,
-                        end_time: endDate ? endDate.toTimeString().slice(0, 5) : null,
                         // Ensure location is properly structured
-                        location: {
-                            address: campaign.address || campaign.venue || 'Location not specified',
+                        location: campaign.location || {
+                            address: campaign.address || 'Location not specified',
                             city: campaign.city || '',
                             state: campaign.state || '',
-                            coordinates: {
-                                latitude: campaign.latitude || 0,
-                                longitude: campaign.longitude || 0
-                            }
+                            coordinates: campaign.coordinates || { latitude: 0, longitude: 0 }
                         },
-                        // Map organizer from joined data
-                        organizer: campaign.users?.full_name || 'Unknown Organizer',
-                        organizer_email: campaign.users?.email || '',
-                        organizer_contact: campaign.contact_number || '0000000000',
-                        // Map blood bank from joined data
-                        blood_bank: campaign.blood_banks ? {
-                            name: campaign.blood_banks.name || '',
-                            address: campaign.blood_banks.address || '',
-                            city: campaign.blood_banks.city || '',
-                            state: campaign.blood_banks.state || '',
-                            phone: campaign.blood_banks.phone || '',
-                            email: campaign.blood_banks.email || ''
-                        } : null,
+                        // Map organizer from joined data if needed
+                        organizer: campaign.organizer || campaign.users?.full_name || 'Unknown Organizer',
+                        organizer_email: campaign.organizer_email || campaign.users?.email || '',
+                        organizer_contact: campaign.organizer_contact || campaign.contact_phone || '0000000000',
+                        // Map blood bank from joined data if needed
+                        blood_bank: campaign.blood_bank || (campaign.blood_banks ? {
+                            name: campaign.blood_banks.name,
+                            address: campaign.blood_banks.address,
+                            city: campaign.blood_banks.city,
+                            state: campaign.blood_banks.state,
+                            phone: campaign.blood_banks.phone,
+                            email: campaign.blood_banks.email
+                        } : null),
                         // Ensure arrays exist
                         blood_types_needed: campaign.blood_types_needed || [],
                         requirements: campaign.requirements || [],
                         benefits: campaign.benefits || [],
-                        // Map target_donors to max_donors
-                        max_donors: campaign.target_donors || campaign.max_donors || 0,
-                        registered_donors: campaign.registered_donors || 0
+                        // Ensure numbers
+                        registered_donors: campaign.registered_donors || 0,
+                        max_donors: campaign.max_donors || 0
                     };
+                    console.log('  ✅ Transformed campaign:', transformed.id, transformed.title);
                     return transformed;
                 });
             }
@@ -166,20 +175,7 @@ class CampaignService {
             }
 
             const token = await this.getAuthToken();
-            console.log('🔑 Registration - User ID:', user.id);
-            console.log('🔑 Registration - Token exists:', !!token);
-
-            const isTemporaryToken = token && (token.startsWith('user-token-') || token.startsWith('temp-token-'));
-            console.log('🔑 Registration - Token type:', token ? (isTemporaryToken ? '⚠️ Temporary token (backend needs to return session)' : '✅ Real Supabase token') : 'NO TOKEN');
-
-            if (!token) {
-                throw new Error('No authentication token found. Please login again.');
-            }
-
-            const url = `${this.baseURL}/campaigns/${campaignId}/register`;
-            console.log('📤 Registering at:', url);
-
-            const response = await fetch(url, {
+            const response = await fetch(`${this.baseURL}/campaigns/${campaignId}/register`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -187,8 +183,6 @@ class CampaignService {
                 },
                 body: JSON.stringify(additionalData)
             });
-
-            console.log('📥 Registration response status:', response.status);
 
             const contentType = response.headers.get('content-type');
             if (!contentType || !contentType.includes('application/json')) {
@@ -214,148 +208,28 @@ class CampaignService {
     async cancelRegistration(campaignId) {
         // This endpoint is not available on your backend
         throw new Error('Registration cancellation is not available. Contact campaign organizer directly.');
-    }// Get user's campaign registrations
+    }// Get user's campaign registrations - NOT IMPLEMENTED
     async getUserRegistrations() {
-        try {
-            const user = await this.getCurrentUser();
-            if (!user) {
-                return {
-                    success: true,
-                    data: {
-                        registrations: [],
-                        total: 0
-                    }
-                };
-            }
-
-            const token = await this.getAuthToken();
-            console.log('📋 Fetching from:', `${this.baseURL}/campaigns/registrations`);
-
-            const response = await fetch(`${this.baseURL}/campaigns/registrations`, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                }
-            });
-
-            if (!response.ok) {
-                // If endpoint doesn't exist, return empty
-                return {
-                    success: true,
-                    data: {
-                        registrations: [],
-                        total: 0
-                    }
-                };
-            }
-
-            const data = await response.json();
-
-            // Transform registrations to include campaign data
-            if (data.success && Array.isArray(data.data)) {
-                data.data = data.data.map(reg => ({
-                    ...reg,
-                    campaign: reg.campaigns ? this.transformCampaign(reg.campaigns) : null
-                }));
-            }
-
-            return data;
-        } catch (error) {
-            console.error('Error fetching user registrations:', error);
-            return {
-                success: true,
-                data: {
-                    registrations: [],
-                    total: 0
-                }
-            };
-        }
-    }
-
-    // Helper method to transform campaign data
-    transformCampaign(campaign) {
-        const startDate = campaign.start_date ? new Date(campaign.start_date) : null;
-        const endDate = campaign.end_date ? new Date(campaign.end_date) : null;
-
+        // This endpoint is not available on your backend
         return {
-            ...campaign,
-            date: startDate ? startDate.toISOString().split('T')[0] : null,
-            start_time: startDate ? startDate.toTimeString().slice(0, 5) : null,
-            end_time: endDate ? endDate.toTimeString().slice(0, 5) : null,
-            location: {
-                address: campaign.address || campaign.venue || 'Location not specified',
-                city: campaign.city || '',
-                state: campaign.state || '',
-                coordinates: {
-                    latitude: campaign.latitude || 0,
-                    longitude: campaign.longitude || 0
-                }
-            },
-            organizer: campaign.users?.full_name || 'Unknown Organizer',
-            organizer_email: campaign.users?.email || '',
-            organizer_contact: campaign.contact_number || '0000000000',
-            blood_bank: campaign.blood_banks ? {
-                name: campaign.blood_banks.name || '',
-                address: campaign.blood_banks.address || '',
-                city: campaign.blood_banks.city || '',
-                state: campaign.blood_banks.state || '',
-                phone: campaign.blood_banks.phone || '',
-                email: campaign.blood_banks.email || ''
-            } : null,
-            blood_types_needed: campaign.blood_types_needed || [],
-            requirements: campaign.requirements || [],
-            benefits: campaign.benefits || [],
-            max_donors: campaign.target_donors || campaign.max_donors || 0,
-            registered_donors: campaign.registered_donors || 0
+            success: true,
+            message: 'User registrations not available',
+            data: {
+                registrations: [],
+                total: 0
+            }
         };
-    }// Check registration status for a specific campaign
+    }// Check registration status for a specific campaign - NOT IMPLEMENTED
     async getRegistrationStatus(campaignId) {
-        try {
-            const user = await this.getCurrentUser();
-            if (!user) {
-                return {
-                    success: true,
-                    data: {
-                        is_registered: false,
-                        registration: null
-                    }
-                };
+        // This endpoint is not available on your backend
+        return {
+            success: true,
+            message: 'Registration status check not available',
+            data: {
+                is_registered: false,
+                registration: null
             }
-
-            const token = await this.getAuthToken();
-            const response = await fetch(`${this.baseURL}/campaigns/${campaignId}/registration-status`, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                }
-            });
-
-            if (!response.ok) {
-                // If endpoint doesn't exist, return not registered
-                return {
-                    success: true,
-                    data: {
-                        is_registered: false,
-                        registration: null
-                    }
-                };
-            }
-
-            const data = await response.json();
-            return data;
-        } catch (error) {
-            console.error('Error checking registration status:', error);
-            // Return not registered on error
-            return {
-                success: true,
-                data: {
-                    is_registered: false,
-                    registration: null
-                }
-            };
-        }
+        };
     }// Get user campaign statistics - NOT IMPLEMENTED
     async getUserCampaignStats() {
         // This endpoint is not available on your backend

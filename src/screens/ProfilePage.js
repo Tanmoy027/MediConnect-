@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
     View,
     Text,
@@ -8,19 +8,136 @@ import {
     Alert,
     StatusBar,
     ActivityIndicator,
-    TextInput,
 } from 'react-native';
 import { useAuth } from '../context';
+import authService from '../api/authentication';
+
+/*
+ * Profile Page Component
+ * ======================
+ * 
+ * Implements session-based authentication for profile data fetching.
+ * 
+ * Data Flow:
+ * 1. Component mounts → useEffect → fetchProfile()
+ * 2. fetchProfile() → GET /api/user/profile (no auth headers)
+ * 3. Server validates session cookies → supabase.auth.getUser()
+ * 4. Server queries users & blood_donors tables
+ * 5. Returns combined profile data → setState → UI updates
+ * 
+ * Expected API Response Structure:
+ * {
+ *   "success": true,
+ *   "message": "Profile retrieved successfully", 
+ *   "data": {
+ *     "user": {
+ *       "id": "uuid",
+ *       "email": "user@example.com",
+ *       "full_name": "John Doe",
+ *       "avatar_url": "https://supabase-url/storage/.../profile.jpg",
+ *       "blood_type": "O+",
+ *       // ... other user fields
+ *     },
+ *     "donor": {
+ *       "id": "uuid", 
+ *       "blood_type": "O+",
+ *       "total_donations": 5,
+ *       "is_available": true,
+ *       // ... other donor fields (null if not a donor)
+ *     }
+ *   }
+ * }
+ * 
+ * Authentication Features:
+ * - Automatic session handling via cookies
+ * - No manual token management required
+ * - NO FALLBACK: Shows error if real data cannot be fetched
+ * - 401 handling for expired sessions
+ */
 
 const ProfilePage = ({ navigation }) => {
-    const { user, logout, updateProfile, isLoading } = useAuth();
+    const { logout } = useAuth();
     const [isLoggingOut, setIsLoggingOut] = useState(false);
-    const [isEditing, setIsEditing] = useState(false);
-    const [editedUser, setEditedUser] = useState({
-        full_name: user?.full_name || user?.fullName || '',
-        email: user?.email || '',
-        phone: user?.phone || '',
-    });
+    const [isLoading, setIsLoading] = useState(true);
+    const [profileData, setProfileData] = useState(null);
+
+    // Profile Page Load - Initialize profile data fetching
+    // This triggers the session-based authentication flow
+    useEffect(() => {
+        console.log('Profile Page Load - useEffect triggered');
+        fetchProfile(); // Start the authentication and data fetching process
+    }, []);
+
+    const fetchProfile = async () => {
+        try {
+            setIsLoading(true);
+
+            console.log('Profile Page Load - Starting fetchProfile()');
+
+            // Use authentication service to handle Bearer token authentication
+            const result = await authService.getUserProfile();
+
+            if (!result.success) {
+                if (result.requiresAuth) {
+                    console.log('Authentication Flow: 401 Unauthorized - Session expired or invalid');
+                    Alert.alert(
+                        'Authentication Required',
+                        'Your session has expired. Please login again to access your profile.',
+                        [
+                            {
+                                text: 'Go to Login',
+                                onPress: () => {
+                                    // Clear authentication state and navigate to login
+                                    logout();
+                                },
+                            }
+                        ]
+                    );
+                    return;
+                }
+                throw new Error(result.message || 'Failed to retrieve profile data');
+            }
+
+            // Validate API response structure
+            if (!result.data || !result.data.user) {
+                throw new Error('Invalid profile data structure received from server');
+            }
+
+            // Update profile state with server data
+            setProfileData(result.data);
+            console.log('Profile Page: State updated with server data');
+            console.log('Profile Data Structure:', {
+                hasUserData: !!result.data.user,
+                hasDonorData: !!result.data.donor,
+                userId: result.data.user?.id || 'N/A',
+                userEmail: result.data.user?.email || 'N/A',
+                bloodType: result.data.user?.blood_type || 'N/A',
+                hasAvatar: !!result.data.user?.avatar_url
+            });
+
+        } catch (error) {
+            console.error('Profile Fetch Error:', error.message);
+
+            // Show error and require retry
+            Alert.alert(
+                'Profile Load Failed',
+                `Unable to load your profile data: ${error.message}`,
+                [
+                    {
+                        text: 'Retry',
+                        onPress: fetchProfile,
+                    },
+                    {
+                        text: 'Go Back',
+                        style: 'cancel',
+                        onPress: () => navigation.goBack(),
+                    }
+                ]
+            );
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
     const handleLogout = () => {
         Alert.alert(
@@ -52,30 +169,13 @@ const ProfilePage = ({ navigation }) => {
         }
     };
 
-    const handleSaveProfile = async () => {
-        try {
-            const result = await updateProfile(editedUser);
-            if (result.success) {
-                setIsEditing(false);
-                Alert.alert('Success', 'Profile updated successfully!');
-            } else {
-                Alert.alert('Error', result.message || 'Failed to update profile');
-            }
-        } catch (error) {
-            Alert.alert('Error', 'Failed to update profile. Please try again.');
-        }
+    const formatDate = (dateString) => {
+        if (!dateString) return 'Not provided';
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     };
 
-    const handleCancelEdit = () => {
-        setEditedUser({
-            full_name: user?.full_name || user?.fullName || '',
-            email: user?.email || '',
-            phone: user?.phone || '',
-        });
-        setIsEditing(false);
-    };
-
-    if (isLoading || !user) {
+    if (isLoading) {
         return (
             <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color="#E53E3E" />
@@ -83,6 +183,19 @@ const ProfilePage = ({ navigation }) => {
             </View>
         );
     }
+
+    if (!profileData) {
+        return (
+            <View style={styles.loadingContainer}>
+                <Text style={styles.errorText}>Failed to load profile</Text>
+                <TouchableOpacity style={styles.retryButton} onPress={fetchProfile}>
+                    <Text style={styles.retryButtonText}>Retry</Text>
+                </TouchableOpacity>
+            </View>
+        );
+    }
+
+    const { user, donor } = profileData;
 
     return (
         <View style={styles.container}>
@@ -98,10 +211,10 @@ const ProfilePage = ({ navigation }) => {
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>Profile</Text>
                 <TouchableOpacity
-                    style={styles.editButton}
-                    onPress={() => setIsEditing(!isEditing)}
+                    style={styles.refreshButton}
+                    onPress={fetchProfile}
                 >
-                    <Text style={styles.editIcon}>{isEditing ? '✕' : '✎'}</Text>
+                    <Text style={styles.refreshIcon}>↻</Text>
                 </TouchableOpacity>
             </View>
 
@@ -110,109 +223,168 @@ const ProfilePage = ({ navigation }) => {
                 <View style={styles.avatarSection}>
                     <View style={styles.avatar}>
                         <Text style={styles.avatarText}>
-                            {(user.full_name || user.fullName || 'U').charAt(0).toUpperCase()}
+                            {(user?.full_name || 'U').charAt(0).toUpperCase()}
                         </Text>
                     </View>
                     <Text style={styles.userName}>
-                        {user.full_name || user.fullName || 'User'}
+                        {user?.full_name || 'User'}
                     </Text>
                     <Text style={styles.userRole}>
-                        {user.role === 'normal_user' ? 'Patient' : user.role}
+                        {user?.role === 'normal_user' ? 'Patient' : user?.role || 'User'}
                     </Text>
+                    {user?.is_active && (
+                        <View style={styles.activeStatus}>
+                            <Text style={styles.activeStatusText}>● Active</Text>
+                        </View>
+                    )}
                 </View>
 
-                {/* Profile Information */}
+                {/* Personal Information */}
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>Personal Information</Text>
+                    {!donor && (
+                        <View style={styles.infoNote}>
+                            <Text style={styles.infoNoteText}>
+                                ℹ️ Showing basic profile information. Full profile data requires server connection.
+                            </Text>
+                        </View>
+                    )}
 
                     <View style={styles.infoItem}>
                         <Text style={styles.infoLabel}>Full Name</Text>
-                        {isEditing ? (
-                            <TextInput
-                                style={styles.editInput}
-                                value={editedUser.full_name}
-                                onChangeText={(text) => setEditedUser(prev => ({ ...prev, full_name: text }))}
-                                placeholder="Enter your full name"
-                            />
-                        ) : (
-                            <Text style={styles.infoValue}>
-                                {user.full_name || user.fullName || 'Not provided'}
-                            </Text>
-                        )}
+                        <Text style={styles.infoValue}>{user?.full_name || 'Not provided'}</Text>
                     </View>
 
                     <View style={styles.infoItem}>
                         <Text style={styles.infoLabel}>Email</Text>
-                        {isEditing ? (
-                            <TextInput
-                                style={styles.editInput}
-                                value={editedUser.email}
-                                onChangeText={(text) => setEditedUser(prev => ({ ...prev, email: text }))}
-                                placeholder="Enter your email"
-                                keyboardType="email-address"
-                                autoCapitalize="none"
-                            />
-                        ) : (
-                            <Text style={styles.infoValue}>
-                                {user.email || 'Not provided'}
-                            </Text>
-                        )}
+                        <Text style={styles.infoValue}>{user?.email || 'Not provided'}</Text>
                     </View>
 
                     <View style={styles.infoItem}>
                         <Text style={styles.infoLabel}>Phone</Text>
-                        {isEditing ? (
-                            <TextInput
-                                style={styles.editInput}
-                                value={editedUser.phone}
-                                onChangeText={(text) => setEditedUser(prev => ({ ...prev, phone: text }))}
-                                placeholder="Enter your phone number"
-                                keyboardType="phone-pad"
-                            />
-                        ) : (
-                            <Text style={styles.infoValue}>
-                                {user.phone || 'Not provided'}
-                            </Text>
-                        )}
+                        <Text style={styles.infoValue}>{user?.phone || 'Not provided'}</Text>
                     </View>
 
                     <View style={styles.infoItem}>
-                        <Text style={styles.infoLabel}>User ID</Text>
-                        <Text style={styles.infoValue}>{`${user.id || 'N/A'}`}</Text>
+                        <Text style={styles.infoLabel}>Date of Birth</Text>
+                        <Text style={styles.infoValue}>{formatDate(user?.date_of_birth)}</Text>
+                    </View>
+
+                    <View style={styles.infoItem}>
+                        <Text style={styles.infoLabel}>Gender</Text>
+                        <Text style={styles.infoValue}>{user?.gender || 'Not provided'}</Text>
+                    </View>
+
+                    <View style={styles.infoItem}>
+                        <Text style={styles.infoLabel}>Blood Type</Text>
+                        <Text style={styles.infoValue}>{user?.blood_type || 'Not provided'}</Text>
                     </View>
                 </View>
 
-                {/* Edit Actions */}
-                {isEditing && (
-                    <View style={styles.editActions}>
-                        <TouchableOpacity style={styles.cancelButton} onPress={handleCancelEdit}>
-                            <Text style={styles.cancelButtonText}>Cancel</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.saveButton} onPress={handleSaveProfile}>
-                            <Text style={styles.saveButtonText}>Save Changes</Text>
-                        </TouchableOpacity>
+                {/* Address Information */}
+                <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Address</Text>
+
+                    <View style={styles.infoItem}>
+                        <Text style={styles.infoLabel}>Street Address</Text>
+                        <Text style={styles.infoValue}>{user?.address || 'Not provided'}</Text>
+                    </View>
+
+                    <View style={styles.infoRow}>
+                        <View style={styles.infoItemHalf}>
+                            <Text style={styles.infoLabel}>City</Text>
+                            <Text style={styles.infoValue}>{user?.city || 'N/A'}</Text>
+                        </View>
+                        <View style={styles.infoItemHalf}>
+                            <Text style={styles.infoLabel}>State</Text>
+                            <Text style={styles.infoValue}>{user?.state || 'N/A'}</Text>
+                        </View>
+                    </View>
+
+                    <View style={styles.infoItem}>
+                        <Text style={styles.infoLabel}>Pincode</Text>
+                        <Text style={styles.infoValue}>{user?.pincode || 'Not provided'}</Text>
+                    </View>
+                </View>
+
+                {/* Medical Information */}
+                <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Medical Information</Text>
+
+                    <View style={styles.infoItem}>
+                        <Text style={styles.infoLabel}>Allergies</Text>
+                        <Text style={styles.infoValue}>{user?.allergies || 'None'}</Text>
+                    </View>
+
+                    <View style={styles.infoItem}>
+                        <Text style={styles.infoLabel}>Medical Conditions</Text>
+                        <Text style={styles.infoValue}>{user?.medical_conditions || 'None'}</Text>
+                    </View>
+                </View>
+
+                {/* Emergency Contact */}
+                <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Emergency Contact</Text>
+
+                    <View style={styles.infoItem}>
+                        <Text style={styles.infoLabel}>Contact Name</Text>
+                        <Text style={styles.infoValue}>{user?.emergency_contact_name || 'Not provided'}</Text>
+                    </View>
+
+                    <View style={styles.infoItem}>
+                        <Text style={styles.infoLabel}>Contact Phone</Text>
+                        <Text style={styles.infoValue}>{user?.emergency_contact_phone || 'Not provided'}</Text>
+                    </View>
+                </View>
+
+                {/* Donor Information */}
+                {donor && (
+                    <View style={styles.section}>
+                        <Text style={styles.sectionTitle}>Donor Information</Text>
+
+                        <View style={styles.donorStatusCard}>
+                            <View style={styles.donorStatusRow}>
+                                <Text style={styles.donorStatusLabel}>Status</Text>
+                                <View style={[styles.statusBadge, donor.is_available ? styles.statusAvailable : styles.statusUnavailable]}>
+                                    <Text style={styles.statusBadgeText}>
+                                        {donor.is_available ? 'Available' : 'Unavailable'}
+                                    </Text>
+                                </View>
+                            </View>
+                        </View>
+
+                        <View style={styles.infoRow}>
+                            <View style={styles.infoItemHalf}>
+                                <Text style={styles.infoLabel}>Blood Type</Text>
+                                <Text style={styles.infoValue}>{donor.blood_type || 'N/A'}</Text>
+                            </View>
+                            <View style={styles.infoItemHalf}>
+                                <Text style={styles.infoLabel}>Weight</Text>
+                                <Text style={styles.infoValue}>{donor.weight ? `${donor.weight} kg` : 'N/A'}</Text>
+                            </View>
+                        </View>
+
+                        <View style={styles.infoItem}>
+                            <Text style={styles.infoLabel}>Total Donations</Text>
+                            <Text style={styles.infoValue}>{donor.total_donations || 0}</Text>
+                        </View>
+
+                        <View style={styles.infoItem}>
+                            <Text style={styles.infoLabel}>Last Donation Date</Text>
+                            <Text style={styles.infoValue}>{formatDate(donor.last_donation_date)}</Text>
+                        </View>
+
+                        <View style={styles.infoItem}>
+                            <Text style={styles.infoLabel}>Next Eligible Date</Text>
+                            <Text style={styles.infoValue}>{formatDate(donor.next_eligible_date)}</Text>
+                        </View>
+
+                        <View style={styles.infoItem}>
+                            <Text style={styles.infoLabel}>Medications</Text>
+                            <Text style={styles.infoValue}>{donor.medications || 'None'}</Text>
+                        </View>
                     </View>
                 )}
-
-                {/* Account Actions */}
-                <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Account</Text>
-
-                    <TouchableOpacity style={styles.actionItem}>
-                        <Text style={styles.actionText}>Change Password</Text>
-                        <Text style={styles.actionArrow}>→</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity style={styles.actionItem}>
-                        <Text style={styles.actionText}>Privacy Settings</Text>
-                        <Text style={styles.actionArrow}>→</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity style={styles.actionItem}>
-                        <Text style={styles.actionText}>Help & Support</Text>
-                        <Text style={styles.actionArrow}>→</Text>
-                    </TouchableOpacity>
-                </View>
 
                 {/* Logout Button */}
                 <View style={styles.logoutSection}>
@@ -254,6 +426,22 @@ const styles = StyleSheet.create({
         fontSize: 16,
         color: '#666666',
     },
+    errorText: {
+        fontSize: 16,
+        color: '#E53E3E',
+        marginBottom: 20,
+    },
+    retryButton: {
+        backgroundColor: '#E53E3E',
+        paddingVertical: 12,
+        paddingHorizontal: 30,
+        borderRadius: 8,
+    },
+    retryButtonText: {
+        fontSize: 16,
+        color: '#FFFFFF',
+        fontWeight: '600',
+    },
     header: {
         flexDirection: 'row',
         justifyContent: 'space-between',
@@ -279,13 +467,13 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         color: '#333333',
     },
-    editButton: {
+    refreshButton: {
         padding: 8,
         borderRadius: 20,
         backgroundColor: '#F8F8F8',
     },
-    editIcon: {
-        fontSize: 16,
+    refreshIcon: {
+        fontSize: 20,
         color: '#333333',
     },
     content: {
@@ -321,6 +509,18 @@ const styles = StyleSheet.create({
         color: '#666666',
         textTransform: 'capitalize',
     },
+    activeStatus: {
+        marginTop: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 4,
+        backgroundColor: '#D4EDDA',
+        borderRadius: 12,
+    },
+    activeStatusText: {
+        fontSize: 14,
+        color: '#155724',
+        fontWeight: '500',
+    },
     section: {
         marginBottom: 30,
     },
@@ -331,7 +531,16 @@ const styles = StyleSheet.create({
         marginBottom: 15,
     },
     infoItem: {
-        marginBottom: 20,
+        marginBottom: 15,
+    },
+    infoRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginBottom: 15,
+    },
+    infoItemHalf: {
+        flex: 1,
+        marginHorizontal: 5,
     },
     infoLabel: {
         fontSize: 14,
@@ -346,65 +555,38 @@ const styles = StyleSheet.create({
         paddingHorizontal: 16,
         backgroundColor: '#F8F8F8',
         borderRadius: 8,
+        textTransform: 'capitalize',
     },
-    editInput: {
-        fontSize: 16,
-        color: '#333333',
-        paddingVertical: 12,
-        paddingHorizontal: 16,
-        backgroundColor: '#FFFFFF',
-        borderRadius: 8,
-        borderWidth: 1,
-        borderColor: '#E0E0E0',
-    },
-    editActions: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginBottom: 30,
-    },
-    cancelButton: {
-        flex: 1,
-        padding: 15,
+    donorStatusCard: {
         backgroundColor: '#F8F8F8',
         borderRadius: 8,
-        marginRight: 10,
+        padding: 16,
+        marginBottom: 15,
+    },
+    donorStatusRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
         alignItems: 'center',
     },
-    cancelButtonText: {
+    donorStatusLabel: {
         fontSize: 16,
-        color: '#666666',
+        color: '#333333',
         fontWeight: '500',
     },
-    saveButton: {
-        flex: 1,
-        padding: 15,
-        backgroundColor: '#E53E3E',
-        borderRadius: 8,
-        marginLeft: 10,
-        alignItems: 'center',
+    statusBadge: {
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 12,
     },
-    saveButtonText: {
-        fontSize: 16,
-        color: '#FFFFFF',
+    statusAvailable: {
+        backgroundColor: '#D4EDDA',
+    },
+    statusUnavailable: {
+        backgroundColor: '#F8D7DA',
+    },
+    statusBadgeText: {
+        fontSize: 14,
         fontWeight: '600',
-    },
-    actionItem: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingVertical: 15,
-        paddingHorizontal: 16,
-        backgroundColor: '#F8F8F8',
-        borderRadius: 8,
-        marginBottom: 10,
-    },
-    actionText: {
-        fontSize: 16,
-        color: '#333333',
-    },
-    actionArrow: {
-        fontSize: 16,
-        color: '#666666',
     },
     logoutSection: {
         marginBottom: 30,
@@ -428,6 +610,17 @@ const styles = StyleSheet.create({
     versionText: {
         fontSize: 14,
         color: '#999999',
+    },
+    infoNote: {
+        backgroundColor: '#E3F2FD',
+        padding: 12,
+        borderRadius: 8,
+        marginBottom: 15,
+    },
+    infoNoteText: {
+        fontSize: 14,
+        color: '#1976D2',
+        textAlign: 'center',
     },
 });
 

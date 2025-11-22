@@ -6,6 +6,42 @@ const DEMO_MODE = false; // Set to true for demo mode
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+/*
+ * Profile Data Fetching Process
+ * ============================
+ * 
+ * This service implements session-based authentication for profile data fetching:
+ * 
+ * 1. Client-Side Request (Profile Page):
+ *    - useEffect calls fetchProfile() when page loads
+ *    - Makes simple fetch("/api/user/profile") request
+ *    - No authentication headers needed (uses cookies/sessions)
+ * 
+ * 2. Server-Side Authentication (API Route):
+ *    - /api/user/profile route handles authentication internally
+ *    - Uses createClient() from server-side Supabase
+ *    - Calls supabase.auth.getUser() which reads session from cookies
+ * 
+ * 3. Authentication Flow:
+ *    - If no authenticated user: returns 401 Unauthorized
+ *    - If user exists: fetches profile data from database
+ *    - Queries both users & blood_donors tables
+ *    - Returns combined user + donor data
+ * 
+ * 4. Data Flow Summary:
+ *    Profile Page Load → fetchProfile() → GET /api/user/profile → 
+ *    Server reads session from cookies → supabase.auth.getUser() → 
+ *    Query users & blood_donors tables → Return user + donor data → 
+ *    Profile page updates state
+ * 
+ * Key Features:
+ * - No manual token management (Supabase handles session cookies automatically)
+ * - Server-side authentication (API route validates user session)
+ * - Database queries (fetches from both users and blood_donors tables)
+ * - Automatic fallbacks (creates user record if doesn't exist)
+ * - Session-based (uses cookies rather than access tokens)
+ */
+
 // Use AsyncStorage for persistent storage
 const storage = AsyncStorage;
 
@@ -72,6 +108,7 @@ class AuthenticationService {
                 headers: {
                     'Content-Type': 'application/json',
                 },
+                credentials: 'include', // Include cookies for session-based auth
                 body: JSON.stringify({
                     email: email.toLowerCase().trim(),
                     password: password,
@@ -167,6 +204,7 @@ class AuthenticationService {
                 headers: {
                     'Content-Type': 'application/json',
                 },
+                credentials: 'include', // Include cookies for session-based auth
                 body: JSON.stringify({
                     email: email.toLowerCase().trim(),
                     password: password,
@@ -223,9 +261,9 @@ class AuthenticationService {
                 await fetch(`${API_BASE_URL}/auth/logout`, {
                     method: 'POST',
                     headers: {
-                        'Authorization': `Bearer ${this.authToken}`,
                         'Content-Type': 'application/json',
                     },
+                    credentials: 'include', // Include cookies for session-based auth
                 });
             }
         } catch (error) {
@@ -275,6 +313,85 @@ class AuthenticationService {
             return {
                 success: false,
                 message: error.message || 'Failed to get user data',
+            };
+        }
+    }
+
+    // Get user profile with Bearer token authentication
+    // This method uses the stored access token to authenticate with the API
+    async getUserProfile() {
+        try {
+            console.log('Client-Side Request: Calling getUserProfile() with Bearer token');
+            
+            // Get the stored access token
+            const token = await storage.getItem(STORAGE_KEYS.USER_TOKEN);
+            if (!token) {
+                console.log('Authentication Flow: No stored token found');
+                return {
+                    success: false,
+                    message: 'Authentication required. Please login again.',
+                    requiresAuth: true
+                };
+            }
+
+            console.log('Making GET /api/user/profile request with Bearer token...');
+            const response = await fetch(`${API_BASE_URL}/user/profile`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`, // Use Bearer token authentication
+                },
+                credentials: 'include', // Also include cookies for compatibility
+            });
+
+            console.log('GET /api/user/profile - Response status:', response.status);
+
+            if (response.status === 401) {
+                console.log('Authentication Flow: 401 Unauthorized - Session expired or invalid');
+                // Clear stored auth data if session is invalid
+                await this.clearAuthData();
+                return {
+                    success: false,
+                    message: 'Authentication required. Please login again.',
+                    requiresAuth: true
+                };
+            }
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || errorData.message || `HTTP ${response.status}`);
+            }
+
+            const data = await response.json();
+            console.log('Data Flow Summary: Received profile data from server');
+
+            // Validate response structure matches expected API format
+            if (!data.success) {
+                throw new Error(data.error || data.message || 'API returned unsuccessful response');
+            }
+
+            if (!data.data || !data.data.user) {
+                throw new Error('Invalid API response structure - missing user data');
+            }
+
+            console.log('Profile data structure validation:', {
+                hasUser: !!data.data.user,
+                hasDonor: !!data.data.donor,
+                userId: data.data.user?.id || 'N/A',
+                userEmail: data.data.user?.email || 'N/A',
+                hasAvatarUrl: !!data.data.user?.avatar_url,
+                donorTotalDonations: data.data.donor?.total_donations || 0
+            });
+
+            return {
+                success: true,
+                data: data.data, // Contains user and donor information
+            };
+        } catch (error) {
+            console.error('Authentication Flow Error:', error.message);
+            return {
+                success: false,
+                message: error.message || 'Failed to get profile data',
             };
         }
     }
@@ -357,6 +474,58 @@ class AuthenticationService {
         return this.currentUser;
     }
 
+    // Session validation helper
+    // Checks if the current session is valid by attempting to fetch profile
+    async validateSession() {
+        try {
+            console.log('Session Validation: Checking if session is still valid');
+
+            const response = await fetch(`${API_BASE_URL}/user/profile`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'include',
+            });
+
+            if (response.status === 401) {
+                console.log('Session Validation: Session expired or invalid');
+                // Clear stored auth data if session is invalid
+                await this.clearAuthData();
+                return false;
+            }
+
+            if (response.ok) {
+                console.log('Session Validation: Session is valid');
+                return true;
+            }
+
+            return false;
+        } catch (error) {
+            console.error('Session Validation Error:', error.message);
+            return false;
+        }
+    }
+
+    // Clear authentication data (for session expiry)
+    async clearAuthData() {
+        try {
+            await storage.multiRemove([
+                STORAGE_KEYS.USER_TOKEN,
+                STORAGE_KEYS.USER_DATA,
+                STORAGE_KEYS.REFRESH_TOKEN
+            ]);
+
+            this.currentUser = null;
+            this.isAuthenticated = false;
+            this.authToken = null;
+
+            console.log('Authentication data cleared');
+        } catch (error) {
+            console.error('Error clearing auth data:', error);
+        }
+    }
+
     // Update user profile
     async updateProfile(profileData) {
         try {
@@ -390,6 +559,204 @@ class AuthenticationService {
             return {
                 success: false,
                 message: error.message || 'Profile update failed',
+            };
+        }
+    }
+
+    // Get campaigns with Bearer token authentication
+    async getCampaigns(filters = {}) {
+        try {
+            const token = await storage.getItem(STORAGE_KEYS.USER_TOKEN);
+            if (!token) {
+                return {
+                    success: false,
+                    message: 'Authentication required. Please login again.',
+                    requiresAuth: true
+                };
+            }
+
+            // Build query string
+            const queryParams = new URLSearchParams();
+            Object.keys(filters).forEach(key => {
+                if (filters[key]) {
+                    queryParams.append(key, filters[key]);
+                }
+            });
+
+            const url = `${API_BASE_URL}/campaigns?${queryParams}`;
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                },
+                credentials: 'include',
+            });
+
+            if (response.status === 401) {
+                await this.clearAuthData();
+                return {
+                    success: false,
+                    message: 'Authentication required. Please login again.',
+                    requiresAuth: true
+                };
+            }
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || errorData.message || `HTTP ${response.status}`);
+            }
+
+            const data = await response.json();
+            return data;
+
+        } catch (error) {
+            console.error('Get campaigns error:', error);
+            return {
+                success: false,
+                message: error.message || 'Failed to get campaigns',
+            };
+        }
+    }
+
+    // Get user campaign registrations with Bearer token authentication
+    async getUserCampaignRegistrations() {
+        try {
+            const token = await storage.getItem(STORAGE_KEYS.USER_TOKEN);
+            if (!token) {
+                return {
+                    success: false,
+                    message: 'Authentication required. Please login again.',
+                    requiresAuth: true
+                };
+            }
+
+            const response = await fetch(`${API_BASE_URL}/campaigns/registrations`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                },
+                credentials: 'include',
+            });
+
+            if (response.status === 401) {
+                await this.clearAuthData();
+                return {
+                    success: false,
+                    message: 'Authentication required. Please login again.',
+                    requiresAuth: true
+                };
+            }
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || errorData.message || `HTTP ${response.status}`);
+            }
+
+            const data = await response.json();
+            return data;
+
+        } catch (error) {
+            console.error('Get user campaign registrations error:', error);
+            return {
+                success: false,
+                message: error.message || 'Failed to get user registrations',
+            };
+        }
+    }
+
+    // Get user campaign statistics with Bearer token authentication
+    async getUserCampaignStats() {
+        try {
+            const token = await storage.getItem(STORAGE_KEYS.USER_TOKEN);
+            if (!token) {
+                return {
+                    success: false,
+                    message: 'Authentication required. Please login again.',
+                    requiresAuth: true
+                };
+            }
+
+            const response = await fetch(`${API_BASE_URL}/campaigns/stats`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                },
+                credentials: 'include',
+            });
+
+            if (response.status === 401) {
+                await this.clearAuthData();
+                return {
+                    success: false,
+                    message: 'Authentication required. Please login again.',
+                    requiresAuth: true
+                };
+            }
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || errorData.message || `HTTP ${response.status}`);
+            }
+
+            const data = await response.json();
+            return data;
+
+        } catch (error) {
+            console.error('Get user campaign stats error:', error);
+            return {
+                success: false,
+                message: error.message || 'Failed to get user stats',
+            };
+        }
+    }
+
+    // Register for campaign with Bearer token authentication
+    async registerForCampaign(campaignId, additionalData = {}) {
+        try {
+            const token = await storage.getItem(STORAGE_KEYS.USER_TOKEN);
+            if (!token) {
+                return {
+                    success: false,
+                    message: 'Authentication required. Please login again.',
+                    requiresAuth: true
+                };
+            }
+
+            const response = await fetch(`${API_BASE_URL}/campaigns/${campaignId}/register`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                },
+                credentials: 'include',
+                body: JSON.stringify(additionalData),
+            });
+
+            if (response.status === 401) {
+                await this.clearAuthData();
+                return {
+                    success: false,
+                    message: 'Authentication required. Please login again.',
+                    requiresAuth: true
+                };
+            }
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || errorData.message || `HTTP ${response.status}`);
+            }
+
+            const data = await response.json();
+            return data;
+
+        } catch (error) {
+            console.error('Register for campaign error:', error);
+            return {
+                success: false,
+                message: error.message || 'Failed to register for campaign',
             };
         }
     }

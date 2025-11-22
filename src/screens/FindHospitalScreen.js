@@ -18,9 +18,6 @@ const FindHospitalScreen = ({ navigation }) => {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
-    const [selectedFilter, setSelectedFilter] = useState('all'); // all, public, private, emergency
-    const [page, setPage] = useState(1);
-    const [hasMore, setHasMore] = useState(true);
 
     useEffect(() => {
         loadHospitals();
@@ -30,61 +27,27 @@ const FindHospitalScreen = ({ navigation }) => {
         try {
             if (isRefresh) {
                 setRefreshing(true);
-                setPage(1);
             } else {
                 setLoading(true);
             }
 
             const params = {
-                page: isRefresh ? 1 : page,
-                limit: 10,
-                search: searchQuery,
-                ...(selectedFilter !== 'all' && selectedFilter !== 'emergency' && { type: selectedFilter }),
-            }; const result = await hospitalService.getAllHospitals(params);
-            console.log('Hospital service result:', result); if (result.success) {
-                const newHospitals = result.data?.hospitals || [];
+                search: searchQuery.trim() || undefined,
+            };
 
-                // Filter for emergency if selected (now using the correct field)
-                const filteredHospitals = selectedFilter === 'emergency'
-                    ? newHospitals.filter(h => h.is_emergency === true)
-                    : selectedFilter === 'verified'
-                        ? newHospitals.filter(h => h.is_verified === true)
-                        : selectedFilter === 'general'
-                            ? newHospitals.filter(h => h.type === 'general' || !h.is_verified)
-                            : newHospitals; // 'all' case
+            const result = await hospitalService.getAllHospitals(params);
+            console.log('Hospital service result:', result);
 
-                if (isRefresh) {
-                    setHospitals(filteredHospitals);
-                } else {
-                    setHospitals(prev => page === 1 ? filteredHospitals : [...prev, ...filteredHospitals]);
-                }
-
-                setHasMore(result.data?.total_pages ? result.data.page < result.data.total_pages : false);
+            if (result.success) {
+                const newHospitals = result.data?.hospitals || result.data || [];
+                setHospitals(newHospitals);
             } else {
                 console.error('Hospital API error:', result.message);
-                // Only show alert if it's not a network error (those are handled differently)
-                if (!result.message.includes('Network error')) {
-                    Alert.alert('Error', result.message || 'Failed to load hospitals');
-                }
+                Alert.alert('Error', result.message || 'Failed to load hospitals');
             }
         } catch (error) {
             console.error('Load hospitals error:', error);
-
-            // Handle network errors more gracefully
-            const errorMessage = error.message || 'Failed to load hospitals';
-
-            if (errorMessage.includes('Network') || errorMessage.includes('fetch')) {
-                Alert.alert(
-                    'Connection Error',
-                    'Please check your internet connection and try again.',
-                    [
-                        { text: 'Retry', onPress: () => loadHospitals(isRefresh) },
-                        { text: 'Cancel', style: 'cancel' }
-                    ]
-                );
-            } else {
-                Alert.alert('Error', errorMessage);
-            }
+            Alert.alert('Error', 'Failed to load hospitals. Please try again.');
         } finally {
             setLoading(false);
             setRefreshing(false);
@@ -92,14 +55,7 @@ const FindHospitalScreen = ({ navigation }) => {
     };
 
     const handleSearch = () => {
-        setPage(1);
         loadHospitals();
-    };
-
-    const handleFilterChange = (filter) => {
-        setSelectedFilter(filter);
-        setPage(1);
-        setTimeout(() => loadHospitals(), 100);
     };
 
     const handleHospitalPress = (hospital) => {
@@ -111,23 +67,7 @@ const FindHospitalScreen = ({ navigation }) => {
         loadHospitals(true);
     };
 
-    const renderFilterButton = (filter, label) => (
-        <TouchableOpacity
-            key={filter}
-            style={[
-                styles.filterButton,
-                selectedFilter === filter && styles.filterButtonActive
-            ]}
-            onPress={() => handleFilterChange(filter)}
-        >
-            <Text style={[
-                styles.filterButtonText,
-                selectedFilter === filter && styles.filterButtonTextActive
-            ]}>
-                {label}
-            </Text>
-        </TouchableOpacity>
-    ); const renderHospitalCard = (hospital) => (
+    const renderHospitalCard = (hospital) => (
         <TouchableOpacity
             key={hospital.id}
             style={styles.hospitalCard}
@@ -135,56 +75,61 @@ const FindHospitalScreen = ({ navigation }) => {
         >
             <View style={styles.hospitalHeader}>
                 <View style={styles.hospitalInfo}>
-                    <Text style={styles.hospitalName}>{hospital.name || 'Unknown Hospital'}</Text>
-                    <Text style={styles.hospitalType}>
-                        {hospital.is_verified ? 'Verified Hospital' : 'General Hospital'}
-                    </Text>
+                    <Text style={styles.hospitalName}>{hospital.name}</Text>
+                    <Text style={styles.hospitalLocation}>📍 {hospital.city}, {hospital.state}</Text>
                 </View>
-                {hospital.is_emergency && (
+                {hospital.emergency_available && (
                     <View style={styles.emergencyBadge}>
                         <Text style={styles.emergencyText}>Emergency</Text>
                     </View>
                 )}
+                {hospital.ambulance_available && (
+                    <View style={styles.ambulanceBadge}>
+                        <Text style={styles.ambulanceText}>Ambulance</Text>
+                    </View>
+                )}
             </View>
 
-            <Text style={styles.hospitalAddress}>{hospital.address || 'Address not available'}</Text>
-
             <View style={styles.hospitalDetails}>
-                <View style={styles.detailItem}>
-                    <Text style={styles.detailLabel}>Rating:</Text>
-                    <Text style={styles.detailValue}>⭐ {hospital.rating || '4.0'}</Text>
+                <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>📞 Phone:</Text>
+                    <Text style={styles.detailValue}>{hospital.phone || 'Not available'}</Text>
                 </View>
-                <View style={styles.detailItem}>
-                    <Text style={styles.detailLabel}>Capacity:</Text>
-                    <Text style={styles.detailValue}>{hospital.beds_total || 'N/A'}</Text>
+                <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>🏥 Total: {hospital.beds_total || 100} beds</Text>
+                    <Text style={styles.detailValue}>Available: {hospital.beds_available || 50}</Text>
                 </View>
-                <View style={styles.detailItem}>
-                    <Text style={styles.detailLabel}>Available:</Text>
-                    <Text style={styles.detailValue}>{`${hospital.beds_available || 0} beds`}</Text>
+                <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>🚨 Emergency: {hospital.emergency_available ? 'Available' : 'Not Available'}</Text>
+                    <Text style={styles.detailValue}>🚑 Ambulance: {hospital.ambulance_available ? 'Available' : 'Not Available'}</Text>
                 </View>
-            </View>            <View style={styles.specialtiesContainer}>
-                {(Array.isArray(hospital.specialties) ? hospital.specialties : ['General Medicine'])
-                    .filter(specialty => specialty && typeof specialty === 'string' && specialty.trim() !== '')
-                    .slice(0, 3)
-                    .map((specialty, index) => (
-                        <View key={`specialty-${index}`} style={styles.specialtyTag}>
-                            <Text style={styles.specialtyText}>
-                                {specialty.trim()}
-                            </Text>
-                        </View>
-                    ))}
-                {(Array.isArray(hospital.specialties) ? hospital.specialties : []).length > 3 && (
-                    <Text style={styles.moreSpecialties}>
-                        +{(Array.isArray(hospital.specialties) ? hospital.specialties : []).length - 3} more
-                    </Text>
-                )}
-            </View>            <View style={styles.contactInfo}>
-                <Text style={styles.contactText}>
-                    📞 {hospital.phone && hospital.phone.trim() !== '' ? hospital.phone : 'Phone not available'}
+            </View>
+
+            <View style={styles.servicesContainer}>
+                <View style={styles.serviceTag}>
+                    <Text style={styles.serviceText}>Emergency Bed</Text>
+                </View>
+                <View style={styles.serviceTag}>
+                    <Text style={styles.serviceText}>Ambulance</Text>
+                </View>
+                <View style={styles.serviceTag}>
+                    <Text style={styles.serviceText}>General Consultation</Text>
+                </View>
+                <View style={styles.serviceTag}>
+                    <Text style={styles.serviceText}>Specialist Care</Text>
+                </View>
+            </View>
+
+            <View style={styles.hospitalFooter}>
+                <Text style={styles.verificationStatus}>
+                    {hospital.is_verified ? '✅ Verified' : '⚠️ Unverified'}
                 </Text>
-                {hospital.email && hospital.email.trim() !== '' && (
-                    <Text style={styles.contactText}>✉️ {hospital.email}</Text>
-                )}
+                <TouchableOpacity
+                    style={styles.bookButton}
+                    onPress={() => navigation.navigate('HospitalBooking', { hospital })}
+                >
+                    <Text style={styles.bookButtonText}>📅 Book Appointment</Text>
+                </TouchableOpacity>
             </View>
         </TouchableOpacity>
     );
@@ -204,30 +149,24 @@ const FindHospitalScreen = ({ navigation }) => {
                 <Text style={styles.headerTitle}>Hospitals</Text>
             </View>
 
-            {/* Search Bar */}
-            <View style={styles.searchContainer}>
-                <TextInput
-                    style={styles.searchInput}
-                    placeholder="Search hospitals, specialties..."
-                    placeholderTextColor="#999999"
-                    value={searchQuery}
-                    onChangeText={setSearchQuery}
-                    onSubmitEditing={handleSearch}
-                />
-                <TouchableOpacity style={styles.searchButton} onPress={handleSearch}>
-                    <Text style={styles.searchIcon}>🔍</Text>
-                </TouchableOpacity>
-            </View>            {/* Filter Buttons - Improved Design */}
-            <View style={styles.filterContainer}>
-                <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.filterContent}
-                >                    {renderFilterButton('all', 'All Hospitals')}
-                    {renderFilterButton('verified', 'Verified')}
-                    {renderFilterButton('public', 'General')}
-                    {renderFilterButton('emergency', 'Emergency')}
-                </ScrollView>
+            {/* Search Section */}
+            <View style={styles.searchSection}>
+                <Text style={styles.searchTitle}>Search Hospitals</Text>
+                <Text style={styles.searchSubtitle}>Find hospitals by location and book appointments</Text>
+
+                <View style={styles.searchContainer}>
+                    <TextInput
+                        style={styles.searchInput}
+                        placeholder="Enter city"
+                        placeholderTextColor="#999999"
+                        value={searchQuery}
+                        onChangeText={setSearchQuery}
+                        onSubmitEditing={handleSearch}
+                    />
+                    <TouchableOpacity style={styles.searchButton} onPress={handleSearch}>
+                        <Text style={styles.searchButtonText}>Search</Text>
+                    </TouchableOpacity>
+                </View>
             </View>
 
             {/* Hospitals List */}
@@ -238,27 +177,20 @@ const FindHospitalScreen = ({ navigation }) => {
                     <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
                 }
             >
-                {loading && hospitals.length === 0 ? (
+                {loading ? (
                     <View style={styles.loadingContainer}>
                         <ActivityIndicator size="large" color="#E53E3E" />
                         <Text style={styles.loadingText}>Loading hospitals...</Text>
-                    </View>) : hospitals.length === 0 ? (
-                        <View style={styles.emptyContainer}>
-                            <Text style={styles.emptyText}>🏥 No hospitals found</Text>
-                            <Text style={styles.emptySubtext}>
-                                Try adjusting your search terms or filters to find hospitals in your area
-                            </Text>
-                        </View>
-                    ) : (
-                    <>
-                        {hospitals.map(renderHospitalCard)}
-
-                        {loading && (
-                            <View style={styles.loadMoreContainer}>
-                                <ActivityIndicator size="small" color="#E53E3E" />
-                            </View>
-                        )}
-                    </>
+                    </View>
+                ) : hospitals.length === 0 ? (
+                    <View style={styles.emptyContainer}>
+                        <Text style={styles.emptyText}>🏥 No hospitals found</Text>
+                        <Text style={styles.emptySubtext}>
+                            Try searching for hospitals in different cities
+                        </Text>
+                    </View>
+                ) : (
+                    hospitals.map(renderHospitalCard)
                 )}
             </ScrollView>
         </View>
@@ -268,7 +200,7 @@ const FindHospitalScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: '#F5F7FA',
     },
     header: {
         flexDirection: 'row',
@@ -276,9 +208,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 20,
         paddingTop: 50,
         paddingBottom: 20,
-        backgroundColor: '#FFFFFF',
-        borderBottomWidth: 1,
-        borderBottomColor: '#F0F0F0',
+        backgroundColor: '#2C3E50',
     },
     backButton: {
         padding: 5,
@@ -286,212 +216,185 @@ const styles = StyleSheet.create({
     },
     backArrow: {
         fontSize: 24,
-        color: '#333333',
+        color: '#FFFFFF',
         fontWeight: 'bold',
     },
     headerTitle: {
         fontSize: 20,
         fontWeight: 'bold',
-        color: '#333333',
+        color: '#FFFFFF',
         flex: 1,
         textAlign: 'center',
-        marginRight: 40, // Compensate for back button
+        marginRight: 40,
+    },
+    searchSection: {
+        backgroundColor: '#2C3E50',
+        paddingHorizontal: 20,
+        paddingBottom: 30,
+    },
+    searchTitle: {
+        fontSize: 24,
+        fontWeight: 'bold',
+        color: '#FFFFFF',
+        marginBottom: 8,
+    },
+    searchSubtitle: {
+        fontSize: 16,
+        color: '#BDC3C7',
+        marginBottom: 20,
     },
     searchContainer: {
         flexDirection: 'row',
-        paddingHorizontal: 20,
-        paddingVertical: 15,
-        backgroundColor: '#FFFFFF',
+        alignItems: 'center',
     },
     searchInput: {
         flex: 1,
-        backgroundColor: '#F5F5F5',
+        backgroundColor: '#FFFFFF',
         paddingHorizontal: 15,
         paddingVertical: 12,
-        borderRadius: 25,
+        borderRadius: 8,
         fontSize: 16,
         color: '#333333',
         marginRight: 10,
     },
     searchButton: {
-        backgroundColor: '#E53E3E',
-        paddingHorizontal: 15,
+        backgroundColor: '#E74C3C',
+        paddingHorizontal: 20,
         paddingVertical: 12,
-        borderRadius: 25,
-        justifyContent: 'center',
-        alignItems: 'center',
+        borderRadius: 8,
     },
-    searchIcon: {
+    searchButtonText: {
+        color: '#FFFFFF',
         fontSize: 16,
-        color: '#FFFFFF',
-    },    /* Filter Buttons - Professional Design */
-    filterContainer: {
-        paddingVertical: 15,
-        paddingHorizontal: 5,
-        backgroundColor: '#FFFFFF',
-        borderBottomWidth: 1,
-        borderBottomColor: '#F0F0F0',
-    },
-    filterContent: {
-        paddingHorizontal: 15,
-        gap: 12,
-    },
-    filterButton: {
-        backgroundColor: '#F8F9FA',
-        paddingHorizontal: 18,
-        paddingVertical: 10,
-        borderRadius: 20,
-        marginRight: 8,
-        borderWidth: 1.5,
-        borderColor: '#E1E5E9',
-        minWidth: 85,
-        alignItems: 'center',
-        justifyContent: 'center',
-        shadowColor: '#000',
-        shadowOffset: {
-            width: 0,
-            height: 2,
-        },
-        shadowOpacity: 0.08,
-        shadowRadius: 3,
-        elevation: 2,
-    },
-    filterButtonActive: {
-        backgroundColor: '#E53E3E',
-        borderColor: '#E53E3E',
-        shadowColor: '#E53E3E',
-        shadowOpacity: 0.25,
-        elevation: 4,
-        transform: [{ scale: 1.02 }],
-    },
-    filterButtonText: {
-        fontSize: 13,
-        color: '#495057',
         fontWeight: '600',
-        textAlign: 'center',
-    },
-    filterButtonTextActive: {
-        color: '#FFFFFF',
-        fontWeight: '700',
     },
     hospitalsList: {
         flex: 1,
         paddingHorizontal: 20,
+        paddingTop: 20,
     },
     hospitalCard: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: '#2C3E50',
         borderRadius: 12,
-        padding: 16,
-        marginVertical: 8,
+        padding: 20,
+        marginBottom: 20,
         shadowColor: '#000',
         shadowOffset: {
             width: 0,
             height: 2,
         },
         shadowOpacity: 0.1,
-        shadowRadius: 3.84,
-        elevation: 5,
-        borderWidth: 1,
-        borderColor: '#F0F0F0',
+        shadowRadius: 4,
+        elevation: 3,
     },
     hospitalHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'flex-start',
-        marginBottom: 8,
+        marginBottom: 15,
     },
     hospitalInfo: {
         flex: 1,
     },
     hospitalName: {
-        fontSize: 18,
+        fontSize: 20,
         fontWeight: 'bold',
-        color: '#333333',
-        marginBottom: 4,
+        color: '#FFFFFF',
+        marginBottom: 5,
     },
-    hospitalType: {
+    hospitalLocation: {
         fontSize: 14,
-        color: '#E53E3E',
-        fontWeight: '500',
-        textTransform: 'capitalize',
+        color: '#BDC3C7',
     },
     emergencyBadge: {
-        backgroundColor: '#FF6B6B',
+        backgroundColor: '#E74C3C',
         paddingHorizontal: 8,
         paddingVertical: 4,
         borderRadius: 12,
+        marginLeft: 10,
     },
     emergencyText: {
         fontSize: 12,
         color: '#FFFFFF',
         fontWeight: '600',
     },
-    hospitalAddress: {
-        fontSize: 14,
-        color: '#666666',
-        marginBottom: 12,
-        lineHeight: 20,
+    ambulanceBadge: {
+        backgroundColor: '#3498DB',
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 12,
+        marginLeft: 5,
+    },
+    ambulanceText: {
+        fontSize: 12,
+        color: '#FFFFFF',
+        fontWeight: '600',
     },
     hospitalDetails: {
+        marginBottom: 15,
+    },
+    detailRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        marginBottom: 12,
-    },
-    detailItem: {
-        flex: 1,
+        marginBottom: 8,
     },
     detailLabel: {
-        fontSize: 12,
-        color: '#999999',
-        marginBottom: 2,
+        fontSize: 14,
+        color: '#BDC3C7',
+        flex: 1,
     },
     detailValue: {
         fontSize: 14,
-        color: '#333333',
-        fontWeight: '600',
-    },
-    specialtiesContainer: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        marginBottom: 12,
-    },
-    specialtyTag: {
-        backgroundColor: '#F0F8FF',
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        borderRadius: 8,
-        marginRight: 6,
-        marginBottom: 4,
-    },
-    specialtyText: {
-        fontSize: 12,
-        color: '#4A90E2',
+        color: '#FFFFFF',
         fontWeight: '500',
     },
-    moreSpecialties: {
-        fontSize: 12,
-        color: '#999999',
-        alignSelf: 'center',
-        marginLeft: 4,
-    }, contactInfo: {
-        borderTopWidth: 1,
-        borderTopColor: '#F0F0F0',
-        paddingTop: 8,
+    servicesContainer: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        marginBottom: 15,
     },
-    contactText: {
+    serviceTag: {
+        backgroundColor: '#34495E',
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+        borderRadius: 15,
+        marginRight: 8,
+        marginBottom: 5,
+    },
+    serviceText: {
+        fontSize: 12,
+        color: '#FFFFFF',
+        fontWeight: '500',
+    },
+    hospitalFooter: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        borderTopWidth: 1,
+        borderTopColor: '#34495E',
+        paddingTop: 15,
+    },
+    verificationStatus: {
         fontSize: 14,
-        color: '#666666',
-        marginBottom: 4,
+        color: '#27AE60',
+        fontWeight: '600',
+    },
+    bookButton: {
+        backgroundColor: '#3498DB',
+        paddingHorizontal: 15,
+        paddingVertical: 8,
+        borderRadius: 8,
+    },
+    bookButtonText: {
+        color: '#FFFFFF',
+        fontSize: 14,
+        fontWeight: '600',
     },
     loadingContainer: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
         paddingVertical: 60,
-        backgroundColor: '#FAFAFA',
-        marginTop: 20,
-        borderRadius: 12,
-        marginHorizontal: 10,
     },
     loadingText: {
         fontSize: 16,
@@ -504,10 +407,6 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         paddingVertical: 60,
-        backgroundColor: '#FAFAFA',
-        marginTop: 20,
-        borderRadius: 12,
-        marginHorizontal: 10,
     },
     emptyText: {
         fontSize: 18,
@@ -522,14 +421,6 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         lineHeight: 20,
         marginTop: 4,
-    },
-    loadMoreContainer: {
-        paddingVertical: 20,
-        alignItems: 'center',
-        backgroundColor: '#FAFAFA',
-        marginTop: 10,
-        borderRadius: 8,
-        marginHorizontal: 10,
     },
 });
 
